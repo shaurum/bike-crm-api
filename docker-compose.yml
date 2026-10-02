@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------
+  # PostgreSQL 16
+  # -----------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: bike-crm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bike_crm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bike_crm_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-bike_crm}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bike_crm} -d ${POSTGRES_DB:-bike_crm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - bike-crm-network
+
+  # -----------------------------------------
+  # Redis 7
+  # -----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: bike-crm-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - bike-crm-network
+
+  # -----------------------------------------
+  # Backend API (FastAPI) — будет заполнен в следующих коммитах
+  # -----------------------------------------
+  # api:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: bike-crm-api
+  #   environment:
+  #     - DATABASE_URL=${DATABASE_URL}
+  #     - REDIS_URL=${REDIS_URL}
+  #     - SECRET_KEY=${SECRET_KEY}
+  #     - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+  #     - ENVIRONMENT=${ENVIRONMENT}
+  #     - DEBUG=${DEBUG}
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./data/uploads:/app/uploads
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - bike-crm-network
+  #   restart: unless-stopped
+
+  # -----------------------------------------
+  # Frontend (Next.js) — будет заполнен в следующих коммитах
+  # -----------------------------------------
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: bike-crm-frontend
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #     - /app/.next
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - bike-crm-network
+  #   restart: unless-stopped
+
+  # -----------------------------------------
+  # Celery Worker — для асинхронных задач
+  # -----------------------------------------
+  # celery-worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: bike-crm-celery-worker
+  #   command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+  #   environment:
+  #     - DATABASE_URL=${DATABASE_URL}
+  #     - REDIS_URL=${REDIS_URL}
+  #     - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+  #     - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./data/uploads:/app/uploads
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - bike-crm-network
+  #   restart: unless-stopped
+
+  # -----------------------------------------
+  # Celery Beat — планировщик задач
+  # -----------------------------------------
+  # celery-beat:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: bike-crm-celery-beat
+  #   command: celery -A app.tasks.celery_app beat --loglevel=info
+  #   environment:
+  #     - DATABASE_URL=${DATABASE_URL}
+  #     - REDIS_URL=${REDIS_URL}
+  #     - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+  #     - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - bike-crm-network
+  #   restart: unless-stopped
+
+networks:
+  bike-crm-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

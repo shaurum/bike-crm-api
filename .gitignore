@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Environment
+.env
+.env.local
+.env.prod
+.env.*.local
+
+# Data & Backups
+data/
+backups/
+*.sqlite
+*.db
+
+# Build outputs
+frontend/.next/
+frontend/out/
+frontend/dist/
+backend/dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+
+# SSL certificates
+nginx/ssl/
+
+# Temporary
+tmp/
+temp/
