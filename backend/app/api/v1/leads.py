@@ -16,6 +16,8 @@ from app.models import (
     Task,
     TaskType,
     TaskStatus,
+    Bike,
+    BikeStatus,
     User,
     UserRole,
 )
@@ -31,6 +33,39 @@ from app.schemas.crm import (
 )
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+# Статус байка следует за этапом сделки, если байк привязан к лиду
+STAGE_BIKE_STATUS = {
+    "Новый": BikeStatus.RESERVED,
+    "Связались": BikeStatus.RESERVED,
+    "Договор": BikeStatus.RESERVED,
+    "Оплата": BikeStatus.RESERVED,
+    "Выдан": BikeStatus.RENTED,
+    "Завершён": BikeStatus.AVAILABLE,
+    "Отказ": BikeStatus.AVAILABLE,
+}
+
+
+async def sync_bike_status(db: AsyncSession, lead: Lead) -> None:
+    """Переводит привязанный байк в статус, соответствующий этапу воронки."""
+    if not lead.bike_id:
+        return
+
+    stage_name = None
+    if lead.stage_id:
+        stage = await db.get(PipelineStage, lead.stage_id)
+        stage_name = stage.name if stage else None
+
+    target = STAGE_BIKE_STATUS.get(stage_name or "")
+    if target is None:
+        return
+
+    bike = await db.get(Bike, lead.bike_id)
+    if not bike or bike.deleted_at is not None:
+        return
+
+    bike.status = target
 
 
 @router.get("", response_model=LeadListResponse)
@@ -189,6 +224,7 @@ async def update_deal(
     for field, value in data.items():
         setattr(lead, field, value)
 
+    await sync_bike_status(db, lead)
     await db.commit()
 
     result = await db.execute(
@@ -286,6 +322,8 @@ async def change_stage(
             lead.status = LeadStatus.LOST
         elif lead.status == LeadStatus.LOST:
             lead.status = LeadStatus.QUALIFIED
+
+    await sync_bike_status(db, lead)
     await db.commit()
     return {"message": "Этап изменен"}
 

@@ -78,15 +78,6 @@ const STATUS_LABELS: Record<string, string> = {
   relocation: "Перемещение",
 };
 
-const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  available: "default",
-  reserved: "outline",
-  rented: "secondary",
-  maintenance: "destructive",
-  charging: "outline",
-  relocation: "outline",
-};
-
 const WEEK = 7 * 24 * 60;
 const TWO_WEEKS = 14 * 24 * 60;
 const MONTH = 30 * 24 * 60;
@@ -573,6 +564,12 @@ export function BikeDialog({
                   {rented && (
                     <p className="text-xs text-muted-foreground">
                       Статус в аренде определяется активной бронью
+                    </p>
+                  )}
+                  {!rented && (
+                    <p className="text-xs text-muted-foreground">
+                      Если байк привязан к сделке, статус переключается сам по
+                      этапу воронки
                     </p>
                   )}
                 </div>
