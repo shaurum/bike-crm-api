@@ -1,13 +1,16 @@
-import { ClipboardList } from "lucide-react";
-import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { FunnelBoard } from "@/components/leads/funnel-board";
 
 export default function OrdersPage() {
   return (
-    <PagePlaceholder
-      title="Заказы"
-      description="Брони проката: статус, оплата, выдача и возврат байков"
-      icon={ClipboardList}
-      hint="Скоро здесь будет список заказов с фильтрами"
-    />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Заказы</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Воронка продаж: от входящего лида до выдачи байка
+        </p>
+      </div>
+
+      <FunnelBoard />
+    </div>
   );
 }
