@@ -636,10 +636,7 @@ export function BikeDialog({
         </div>
 
         <div className="shrink-0 border-t bg-white px-5 py-3">
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Закрыть
-            </Button>
+          <div className="flex items-center justify-end">
             <Button onClick={save} disabled={saving || !bike}>
               {saving ? "Сохраняем…" : "Сохранить"}
             </Button>
@@ -800,10 +797,7 @@ function AddBikeDialog({
             <p className="rounded-md bg-red-50 p-2 text-sm text-red-600">{error}</p>
           )}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Отмена
-            </Button>
+          <DialogFooter className="justify-end">
             <Button type="submit" disabled={saving}>
               {saving ? "Добавляем…" : "Добавить"}
             </Button>

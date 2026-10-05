@@ -80,6 +80,7 @@ interface BikeOption {
   frame_number: string | null;
   is_rented: boolean;
   status: string;
+  linked_lead_id: string | null;
 }
 
 const NONE = "__none__";
@@ -245,6 +246,11 @@ export function LeadDetailDialog({
     }
   };
 
+  // Байк, занятый другой сделкой, выдавать нельзя
+  const availableBikes = bikes.filter(
+    (b) => !b.linked_lead_id || b.linked_lead_id === lead?.id
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
@@ -330,7 +336,11 @@ export function LeadDetailDialog({
               <Field
                 label="Байк"
                 icon={BikeIcon}
-                hint={bikes.length === 0 ? "Гараж пуст — добавьте байк в «Парковке»" : undefined}
+                hint={
+                  availableBikes.length === 0
+                    ? "Все байки заняты другими сделками"
+                    : "Занятые байки другими сделками недоступны"
+                }
               >
                 <Select value={bikeId} onValueChange={setBikeId}>
                   <SelectTrigger>
@@ -338,11 +348,11 @@ export function LeadDetailDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Не выбран</SelectItem>
-                    {bikes.map((b) => (
+                    {availableBikes.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.model}
                         {b.frame_number ? ` · ${b.frame_number}` : ""}
-                        {b.is_rented ? " (в аренде)" : ""}
+                        {b.is_rented || b.status === "rented" ? " (в аренде)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -386,11 +396,12 @@ export function LeadDetailDialog({
               </Field>
             </div>
 
-            <Button onClick={saveDeal} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "Сохраняем…" : "Сохранить сделку"}
-            </Button>
-
-            <Button variant="outline" disabled className="w-full sm:w-auto">
+            <Button
+              variant="outline"
+              disabled
+              className="w-full sm:w-auto"
+              title="Функционал появится позже"
+            >
               <FileText className="mr-2 h-4 w-4" aria-hidden />
               Сгенерировать документ
             </Button>
@@ -440,7 +451,7 @@ export function LeadDetailDialog({
         </div>
 
         <div className="shrink-0 border-t bg-white px-5 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             {lead?.amount != null && (
               <p className="mr-auto text-sm text-muted-foreground">
                 Сумма:{" "}
@@ -449,8 +460,8 @@ export function LeadDetailDialog({
                 </span>
               </p>
             )}
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Закрыть
+            <Button onClick={saveDeal} disabled={saving || !lead}>
+              {saving ? "Сохраняем…" : "Сохранить"}
             </Button>
           </div>
         </div>
