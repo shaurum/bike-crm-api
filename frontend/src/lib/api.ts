@@ -11,9 +11,34 @@ export const api = axios.create({
   timeout: 30000,
 });
 
+const AUTH_FREE_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
+
+function isAuthFree(url?: string) {
+  if (!url) return false;
+  return AUTH_FREE_PATHS.some((p) => url.includes(p));
+}
+
+let refreshing: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+  const { refreshToken, user, setAuth } = useAuthStore.getState();
+  if (!refreshToken) throw new Error("Нет refresh токена");
+
+  const { data } = await axios.post(
+    `${API_URL}/api/v1/auth/refresh`,
+    null,
+    { headers: { Authorization: `Bearer ${refreshToken}` } }
+  );
+
+  if (user) setAuth(user, data.access_token, data.refresh_token);
+  else useAuthStore.getState().setTokens(data.access_token, data.refresh_token);
+
+  return data.access_token as string;
+}
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = useAuthStore.getState().accessToken;
-  if (token) {
+  if (token && !isAuthFree(config.url)) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -22,41 +47,34 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+    const status = error.response?.status;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      const { refreshToken, user, setAuth, logout } = useAuthStore.getState();
-
-      if (refreshToken) {
-        try {
-          const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, null, {
-            headers: { Authorization: `Bearer ${refreshToken}` },
-          });
-          const { access_token, refresh_token } = response.data;
-          if (user) {
-            setAuth(user, access_token, refresh_token);
-          } else {
-            useAuthStore.getState().setTokens(access_token, refresh_token);
-          }
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return api(originalRequest);
-        } catch {
-          logout();
-          if (typeof window !== "undefined") {
-            window.location.href = "/login";
-          }
-        }
-      } else {
-        logout();
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-      }
+    if (status !== 401 || !originalRequest || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+    if (isAuthFree(originalRequest.url)) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+
+    try {
+      refreshing = refreshing ?? refreshAccessToken();
+      const token = await refreshing;
+      originalRequest.headers.Authorization = `Bearer ${token}`;
+      return api(originalRequest);
+    } catch {
+      useAuthStore.getState().logout();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
+      return Promise.reject(error);
+    } finally {
+      refreshing = null;
+    }
   }
 );
 

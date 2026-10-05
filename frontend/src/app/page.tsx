@@ -6,24 +6,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/toaster";
-import { useAuthStore } from "@/lib/store";
+import { useAuthStore, useAuthReady } from "@/lib/store";
 import { authApi } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Bike, Users, DollarSign, AlertTriangle, Calendar, CheckCircle, Clock } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, accessToken, setAuth, logout } = useAuthStore();
+  const { user, accessToken, logout } = useAuthStore();
+  const ready = useAuthReady();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!ready) return;
     if (!accessToken) {
       router.push("/login");
       return;
     }
     fetchStats();
-  }, [accessToken, router]);
+  }, [ready, accessToken, router]);
 
   const fetchStats = async () => {
     try {

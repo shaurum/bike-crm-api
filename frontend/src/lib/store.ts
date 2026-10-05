@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -42,3 +43,20 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+export function useAuthReady(): boolean {
+  const [ready, setReady] = useState(() =>
+    typeof window === "undefined" ? false : useAuthStore.persist.hasHydrated()
+  );
+
+  useEffect(() => {
+    if (useAuthStore.persist.hasHydrated()) {
+      setReady(true);
+      return;
+    }
+    const unsub = useAuthStore.persist.onFinishHydration(() => setReady(true));
+    return unsub;
+  }, []);
+
+  return ready;
+}
