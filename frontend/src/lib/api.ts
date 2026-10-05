@@ -109,6 +109,19 @@ export const leadsApi = {
   }) => api.post("/leads", data),
   assign: (id: string, user_id: string) => api.patch(`/leads/${id}/assign`, null, { params: { user_id } }),
   changeStage: (id: string, stage_id: string) => api.patch(`/leads/${id}/stage`, null, { params: { stage_id } }),
+  updateDeal: (
+    id: string,
+    data: {
+      customer_id?: string | null;
+      bike_id?: string | null;
+      amount?: number | null;
+      deal_due_at?: string | null;
+      rental_start_at?: string | null;
+      rental_end_at?: string | null;
+    }
+  ) => api.patch(`/leads/${id}/deal`, data),
+  comments: (id: string) => api.get(`/leads/${id}/comments`),
+  addComment: (id: string, text: string) => api.post(`/leads/${id}/comments`, { text }),
   sources: () => api.get("/leads/sources/list"),
   stages: () => api.get("/leads/stages/list"),
 };

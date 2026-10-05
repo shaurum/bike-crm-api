@@ -42,7 +42,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { leadsApi } from "@/lib/api";
+import { leadsApi, customersApi } from "@/lib/api";
+import { LeadDetailDialog } from "@/components/leads/lead-detail-dialog";
 import { cn } from "@/lib/utils";
 
 interface Stage {
@@ -59,6 +60,7 @@ interface Lead {
   client_email: string | null;
   status: string;
   stage_id: string | null;
+  amount?: number | null;
   source?: { name: string; type: string } | null;
 }
 
@@ -269,7 +271,13 @@ function LeadCardBody({ lead }: { lead: Lead }) {
   );
 }
 
-function SortableLeadCard({ lead }: { lead: Lead }) {
+function SortableLeadCard({
+  lead,
+  onOpen,
+}: {
+  lead: Lead;
+  onOpen: (id: string) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -284,11 +292,11 @@ function SortableLeadCard({ lead }: { lead: Lead }) {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "rounded-lg border bg-white p-3 shadow-sm",
+        "rounded-lg border bg-white shadow-sm transition-shadow hover:shadow-md",
         isDragging && "opacity-40"
       )}
     >
-      <div className="flex items-start gap-1.5">
+      <div className="flex items-start gap-1.5 p-3">
         <button
           type="button"
           className="mt-0.5 cursor-grab touch-none rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
@@ -298,9 +306,23 @@ function SortableLeadCard({ lead }: { lead: Lead }) {
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onOpen(lead.id)}
+          className="min-w-0 flex-1 cursor-pointer text-left"
+          aria-label="Открыть карточку лида"
+        >
           <LeadCardBody lead={lead} />
-        </div>
+          {lead.amount != null && (
+            <p className="mt-2 text-xs font-semibold">
+              {new Intl.NumberFormat("ru-RU", {
+                style: "currency",
+                currency: "RUB",
+                maximumFractionDigits: 0,
+              }).format(lead.amount)}
+            </p>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -313,9 +335,11 @@ function SortableLeadCard({ lead }: { lead: Lead }) {
 function StageColumn({
   stage,
   leads,
+  onOpen,
 }: {
   stage: Stage;
   leads: Lead[];
+  onOpen: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useSortable({
     id: stage.id,
@@ -354,7 +378,9 @@ function StageColumn({
               Перетащите лид сюда
             </p>
           ) : (
-            leads.map((lead) => <SortableLeadCard key={lead.id} lead={lead} />)
+            leads.map((lead) => (
+              <SortableLeadCard key={lead.id} lead={lead} onOpen={onOpen} />
+            ))
           )}
         </div>
       </SortableContext>
@@ -372,6 +398,7 @@ export function FunnelBoard() {
   const [columns, setColumns] = useState<Record<string, Lead[]>>({});
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -553,6 +580,7 @@ export function FunnelBoard() {
                 key={stage.id}
                 stage={stage}
                 leads={columns[stage.id] ?? []}
+                onOpen={setSelectedLeadId}
               />
             ))}
           </div>
@@ -568,9 +596,19 @@ export function FunnelBoard() {
       </DndContext>
 
       <p className="text-xs text-muted-foreground">
-        Перетащите карточку за левый край (⋮⋮) в другую колонку, чтобы изменить
-        этап. На телефоне — зажать и тянуть.
+        Клик по карточке открывает сделку. Перетащите за левый край (⋮⋮) в
+        другую колонку, чтобы изменить этап. На телефоне — зажать и тянуть.
       </p>
+
+      <LeadDetailDialog
+        leadId={selectedLeadId}
+        open={selectedLeadId !== null}
+        onOpenChange={(v) => {
+          if (!v) setSelectedLeadId(null);
+        }}
+        stages={stages}
+        onSaved={load}
+      />
     </div>
   );
 }
