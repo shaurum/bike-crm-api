@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
+import os
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import structlog
 
@@ -18,9 +21,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("starting_up", environment=settings.ENVIRONMENT)
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     await init_db()
     yield
-    logger.info("shutting_down")
     await close_db()
 
 
@@ -43,6 +46,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.exception_handler(StarletteHTTPException)

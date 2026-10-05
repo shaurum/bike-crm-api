@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 from app.models import BikeStatus, BookingStatus, UserRole
 
@@ -66,10 +66,6 @@ class BikeBase(BaseModel):
     photos: List[str] = []
 
 
-class BikeCreate(BikeBase):
-    pass
-
-
 class BikeUpdate(BaseModel):
     model: Optional[str] = None
     frame_number: Optional[str] = None
@@ -94,8 +90,43 @@ class BikeResponse(BikeBase):
     deleted_at: Optional[datetime] = None
     branch: Optional[BranchResponse] = None
     prices: List[BikePriceResponse] = []
+    is_rented: bool = False
+    active_booking_id: Optional[UUID] = None
+    active_booking_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BikePriceTier(BaseModel):
+    """Прайс-тир байка: неделя / две недели / месяц."""
+
+    week_price: Optional[float] = None
+    two_week_price: Optional[float] = None
+    month_price: Optional[float] = None
+    deposit: float = 0
+
+
+class BikeCreate(BikeBase):
+    prices: Optional[BikePriceTier] = None
+
+
+class BikePatch(BaseModel):
+    branch_id: Optional[UUID] = None
+    model: Optional[str] = None
+    frame_number: Optional[str] = None
+    color: Optional[str] = None
+    year: Optional[int] = None
+    battery_capacity: Optional[float] = None
+    max_speed: Optional[int] = None
+    range_km: Optional[int] = None
+    purchase_price: Optional[float] = None
+    purchase_date: Optional[datetime] = None
+    status: Optional[BikeStatus] = None
+    current_location: Optional[str] = None
+    notes: Optional[str] = None
+    specs: Optional[dict] = None
+    photos: Optional[List[str]] = None
+    prices: Optional[BikePriceTier] = None
 
 
 class UserBase(BaseModel):
@@ -273,6 +304,6 @@ class CustomerListResponse(BaseModel):
 
 
 class BranchListResponse(BaseModel):
-    items: List[BranchResponse]
+    items: List[BranchResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

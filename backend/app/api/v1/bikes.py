@@ -1,14 +1,25 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+import os
+
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from uuid import UUID
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import Bike, BikeStatus, BikePrice, Branch, User, UserRole
-from app.schemas.rental import BikeResponse, BikeListResponse, BranchListResponse
+from app.schemas.rental import (
+    BikeResponse,
+    BikeListResponse,
+    BikeCreate,
+    BikePatch,
+    BranchListResponse,
+    BranchResponse,
+    BranchCreate,
+)
 
 router = APIRouter(prefix="/bikes", tags=["bikes"])
 
@@ -23,7 +34,11 @@ async def list_bikes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(Bike).options(selectinload(Bike.branch)).where(Bike.deleted_at.is_(None))
+    query = (
+        select(Bike)
+        .options(selectinload(Bike.branch), selectinload(Bike.prices))
+        .where(Bike.deleted_at.is_(None))
+    )
 
     if status:
         query = query.where(Bike.status == status)
@@ -40,7 +55,10 @@ async def list_bikes(
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     query = query.order_by(Bike.model).offset((page - 1) * size).limit(size)
     result = await db.execute(query)
-    bikes = result.scalars().all()
+    bikes = list(result.scalars().all())
+
+    for bike in bikes:
+        await _with_rental_state(db, bike)
 
     return {
         "items": bikes,
@@ -106,4 +124,195 @@ async def check_availability(
 @router.get("/branches/list", response_model=BranchListResponse)
 async def list_branches(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Branch).where(Branch.is_active == True))
-    return result.scalars().all()
+    return {"items": list(result.scalars().all())}
+
+
+@router.post("/branches", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
+async def create_branch(
+    payload: BranchCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    branch = Branch(**payload.model_dump())
+    db.add(branch)
+    await db.commit()
+    await db.refresh(branch)
+    return branch
+
+
+# ------------------------------------------------------------------
+# CRUD байков
+# ------------------------------------------------------------------
+
+WEEK = 7 * 24 * 60
+TWO_WEEKS = 14 * 24 * 60
+MONTH = 30 * 24 * 60
+
+PRICE_TIERS = [
+    ("week_price", WEEK, TWO_WEEKS - 1),
+    ("two_week_price", TWO_WEEKS, MONTH - 1),
+    ("month_price", MONTH, None),
+]
+
+
+async def _apply_prices(db: AsyncSession, bike_id: UUID, tier) -> None:
+    """Перезаписывает прайс-тиры байка (неделя / две недели / месяц)."""
+    await db.execute(delete(BikePrice).where(BikePrice.bike_id == bike_id))
+    if tier is None:
+        return
+    for field, duration_min, duration_max in PRICE_TIERS:
+        price = getattr(tier, field, None)
+        if price is None:
+            continue
+        db.add(
+            BikePrice(
+                bike_id=bike_id,
+                duration_min=duration_min,
+                duration_max=duration_max,
+                price=price,
+                deposit=tier.deposit or 0,
+            )
+        )
+
+
+async def _active_booking(db: AsyncSession, bike_id: UUID):
+    from app.models import Booking, BookingStatus
+
+    result = await db.execute(
+        select(Booking)
+        .where(
+            Booking.bike_id == bike_id,
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ACTIVE]),
+        )
+        .order_by(Booking.start_at)
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
+async def _with_rental_state(db: AsyncSession, bike):
+    """Статус «в аренде» берём из CRM: активная бронь, а не ручной флаг."""
+    booking = await _active_booking(db, bike.id)
+    bike.is_rented = booking is not None
+    bike.active_booking_id = booking.id if booking else None
+    bike.active_booking_status = booking.status.value if booking else None
+    return bike
+
+
+async def _load_bike(db: AsyncSession, bike_id: UUID):
+    result = await db.execute(
+        select(Bike)
+        .options(selectinload(Bike.branch), selectinload(Bike.prices))
+        .where(Bike.id == bike_id, Bike.deleted_at.is_(None))
+    )
+    bike = result.scalar_one_or_none()
+    if not bike:
+        raise HTTPException(status_code=404, detail="Байк не найден")
+    return await _with_rental_state(db, bike)
+
+
+@router.post("", response_model=BikeResponse, status_code=status.HTTP_201_CREATED)
+async def create_bike(
+    payload: BikeCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = payload.model_dump(exclude={"prices"})
+    bike = Bike(**data)
+    db.add(bike)
+    await db.flush()
+    await _apply_prices(db, bike.id, payload.prices)
+    await db.commit()
+    return await _load_bike(db, bike.id)
+
+
+@router.patch("/{bike_id}", response_model=BikeResponse)
+async def update_bike(
+    bike_id: UUID,
+    payload: BikePatch,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    bike = await db.get(Bike, bike_id)
+    if not bike or bike.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Байк не найден")
+
+    data = payload.model_dump(exclude={"prices"}, exclude_unset=True)
+    for field, value in data.items():
+        setattr(bike, field, value)
+
+    if payload.prices is not None:
+        await _apply_prices(db, bike.id, payload.prices)
+
+    await db.commit()
+    return await _load_bike(db, bike.id)
+
+
+@router.delete("/{bike_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bike(
+    bike_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone
+
+    bike = await db.get(Bike, bike_id)
+    if not bike or bike.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Байк не найден")
+
+    booking = await _active_booking(db, bike_id)
+    if booking:
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить байк с активной арендой",
+        )
+
+    bike.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return None
+
+
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+
+
+@router.post("/{bike_id}/photo", response_model=BikeResponse)
+async def upload_photo(
+    bike_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    bike = await db.get(Bike, bike_id)
+    if not bike or bike.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Байк не найден")
+
+    ext = ALLOWED_IMAGE_TYPES.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(
+            status_code=415,
+            detail="Поддерживаются только JPG, PNG, WEBP и GIF",
+        )
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    filename = f"bike-{bike_id}{ext}"
+    path = os.path.join(settings.UPLOAD_DIR, filename)
+
+    payload = await file.read()
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if len(payload) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл больше {settings.MAX_UPLOAD_MB} МБ",
+        )
+
+    with open(path, "wb") as fh:
+        fh.write(payload)
+
+    bike.photos = [f"{settings.API_V1_PREFIX.replace('/api/v1', '')}/uploads/{filename}"]
+    await db.commit()
+    return await _load_bike(db, bike.id)

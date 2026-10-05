@@ -96,6 +96,9 @@ class Settings(BaseSettings):
 
     CONTRACT_TEMPLATE_PATH: str = "/app/templates/contract.html"
 
+    UPLOAD_DIR: str = "/app/uploads"
+    MAX_UPLOAD_MB: int = 8
+
 
 @lru_cache
 def get_settings() -> Settings:

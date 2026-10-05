@@ -76,6 +76,12 @@ class Bike(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     photos: Mapped[List[str]] = mapped_column(JSONB, default=[], nullable=False, comment="URL фото")
 
     branch: Mapped["Branch"] = relationship(back_populates="bikes", lazy="selectin")
+    prices: Mapped[List["BikePrice"]] = relationship(
+        back_populates="bike",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="BikePrice.duration_min",
+    )
     bookings: Mapped[List["Booking"]] = relationship(back_populates="bike", lazy="selectin")
     tasks: Mapped[List["Task"]] = relationship(back_populates="bike", lazy="selectin")
 
@@ -100,7 +106,7 @@ class BikePrice(UUIDMixin, TimestampMixin, Base):
     deposit: Mapped[float] = mapped_column(Float, default=0, nullable=False, comment="Залог")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    bike: Mapped["Bike"] = relationship(lazy="selectin")
+    bike: Mapped["Bike"] = relationship(back_populates="prices", lazy="selectin")
 
     __table_args__ = (
         Index("ix_bike_price_bike_active", "bike_id", "is_active"),
