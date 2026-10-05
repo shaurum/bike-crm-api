@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Phone, Mail, Plus, RefreshCw, GripVertical } from "lucide-react";
+import { Phone, Mail, Plus, RefreshCw, GripVertical, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,10 @@ import {
 } from "@/components/ui/select";
 import { leadsApi, customersApi } from "@/lib/api";
 import { LeadDetailDialog } from "@/components/leads/lead-detail-dialog";
+import {
+  ColumnVisibilityMenu,
+  readHiddenStages,
+} from "@/components/leads/column-visibility-menu";
 import { cn } from "@/lib/utils";
 
 interface Stage {
@@ -274,9 +278,11 @@ function LeadCardBody({ lead }: { lead: Lead }) {
 function SortableLeadCard({
   lead,
   onOpen,
+  onDelete,
 }: {
   lead: Lead;
   onOpen: (id: string) => void;
+  onDelete: (lead: Lead) => void;
 }) {
   const {
     attributes,
@@ -306,22 +312,32 @@ function SortableLeadCard({
         >
           <GripVertical className="h-4 w-4" aria-hidden />
         </button>
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onOpen(lead.id)}
+            className="w-full cursor-pointer text-left"
+            aria-label="Открыть карточку лида"
+          >
+            <LeadCardBody lead={lead} />
+            {lead.amount != null && (
+              <p className="mt-2 text-xs font-semibold">
+                {new Intl.NumberFormat("ru-RU", {
+                  style: "currency",
+                  currency: "RUB",
+                  maximumFractionDigits: 0,
+                }).format(lead.amount)}
+              </p>
+            )}
+          </button>
+        </div>
         <button
           type="button"
-          onClick={() => onOpen(lead.id)}
-          className="min-w-0 flex-1 cursor-pointer text-left"
-          aria-label="Открыть карточку лида"
+          onClick={() => onDelete(lead)}
+          aria-label="Удалить лид"
+          className="mt-0.5 shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600"
         >
-          <LeadCardBody lead={lead} />
-          {lead.amount != null && (
-            <p className="mt-2 text-xs font-semibold">
-              {new Intl.NumberFormat("ru-RU", {
-                style: "currency",
-                currency: "RUB",
-                maximumFractionDigits: 0,
-              }).format(lead.amount)}
-            </p>
-          )}
+          <Trash2 className="h-4 w-4" aria-hidden />
         </button>
       </div>
     </div>
@@ -336,10 +352,12 @@ function StageColumn({
   stage,
   leads,
   onOpen,
+  onDelete,
 }: {
   stage: Stage;
   leads: Lead[];
   onOpen: (id: string) => void;
+  onDelete: (lead: Lead) => void;
 }) {
   const { setNodeRef, isOver } = useSortable({
     id: stage.id,
@@ -379,7 +397,12 @@ function StageColumn({
             </p>
           ) : (
             leads.map((lead) => (
-              <SortableLeadCard key={lead.id} lead={lead} onOpen={onOpen} />
+              <SortableLeadCard
+                key={lead.id}
+                lead={lead}
+                onOpen={onOpen}
+                onDelete={onDelete}
+              />
             ))
           )}
         </div>
@@ -399,6 +422,9 @@ export function FunnelBoard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [hiddenStages, setHiddenStages] = useState<string[]>([]);
+  const [toDelete, setToDelete] = useState<Lead | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -451,6 +477,7 @@ export function FunnelBoard() {
   }, [stages.length]);
 
   useEffect(() => {
+    setHiddenStages(readHiddenStages());
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -538,6 +565,26 @@ export function FunnelBoard() {
     [leads, activeId]
   );
 
+  const visibleStages = useMemo(
+    () => stages.filter((s) => !hiddenStages.includes(s.id)),
+    [stages, hiddenStages]
+  );
+
+  const confirmDelete = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      await leadsApi.remove(toDelete.id);
+      setToDelete(null);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось удалить лид");
+      setToDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
@@ -554,6 +601,11 @@ export function FunnelBoard() {
           <Badge variant="secondary">{leads.length}</Badge>
         </div>
         <div className="flex items-center gap-2">
+          <ColumnVisibilityMenu
+            stages={stages}
+            hidden={hiddenStages}
+            onChange={setHiddenStages}
+          />
           <Button variant="outline" size="sm" onClick={load}>
             <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
             Обновить
@@ -575,12 +627,13 @@ export function FunnelBoard() {
       >
         <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
           <div className="flex min-w-max gap-3">
-            {stages.map((stage) => (
+            {visibleStages.map((stage) => (
               <StageColumn
                 key={stage.id}
                 stage={stage}
                 leads={columns[stage.id] ?? []}
                 onOpen={setSelectedLeadId}
+                onDelete={setToDelete}
               />
             ))}
           </div>
@@ -609,6 +662,27 @@ export function FunnelBoard() {
         stages={stages}
         onSaved={load}
       />
+
+      <Dialog open={toDelete !== null} onOpenChange={(v) => !v && setToDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Удалить лид?</DialogTitle>
+            <DialogDescription>
+              {toDelete?.client_name || "Без имени"}
+              {toDelete?.client_phone ? ` · ${toDelete.client_phone}` : ""}. Действие
+              необратимо: вместе с лидом удалятся его комментарии и задачи.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setToDelete(null)} disabled={deleting}>
+              Отмена
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Удаляем…" : "Удалить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

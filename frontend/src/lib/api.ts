@@ -122,6 +122,7 @@ export const leadsApi = {
   ) => api.patch(`/leads/${id}/deal`, data),
   comments: (id: string) => api.get(`/leads/${id}/comments`),
   addComment: (id: string, text: string) => api.post(`/leads/${id}/comments`, { text }),
+  remove: (id: string) => api.delete(`/leads/${id}`),
   sources: () => api.get("/leads/sources/list"),
   stages: () => api.get("/leads/stages/list"),
 };

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID, uuid4
@@ -152,6 +152,25 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
     return lead
+
+
+@router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lead(
+    lead_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+
+    # Задачи ссылаются на лид через SET NULL — удаляем явно, чтобы не осталось мусора
+    await db.execute(delete(Task).where(Task.related_lead_id == lead_id))
+
+    await db.delete(lead)
+    await db.commit()
+    return None
 
 
 @router.patch("/{lead_id}/deal", response_model=LeadResponse)
