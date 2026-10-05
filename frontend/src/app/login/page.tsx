@@ -50,7 +50,7 @@ export default function LoginPage() {
           <CardDescription>Управление прокатом электробайков</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>
             )}
@@ -58,7 +58,11 @@ export default function LoginPage() {
               <label htmlFor="email" className="text-sm font-medium">Email</label>
               <Input
                 id="email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@bike-crm.ru"
@@ -70,7 +74,9 @@ export default function LoginPage() {
               <label htmlFor="password" className="text-sm font-medium">Пароль</label>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"

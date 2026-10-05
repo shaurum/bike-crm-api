@@ -65,7 +65,7 @@ export default function RegisterPage() {
           <CardDescription>Создайте аккаунт в Bike CRM</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>
             )}
@@ -73,7 +73,9 @@ export default function RegisterPage() {
               <label htmlFor="full_name" className="text-sm font-medium">ФИО</label>
               <Input
                 id="full_name"
+                name="name"
                 type="text"
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Иван Иванов"
@@ -85,7 +87,11 @@ export default function RegisterPage() {
               <label htmlFor="email" className="text-sm font-medium">Email</label>
               <Input
                 id="email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@bike-crm.ru"
@@ -97,7 +103,9 @@ export default function RegisterPage() {
               <label htmlFor="phone" className="text-sm font-medium">Телефон</label>
               <Input
                 id="phone"
+                name="tel"
                 type="tel"
+                autoComplete="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+7 (999) 123-45-67"
@@ -108,7 +116,9 @@ export default function RegisterPage() {
               <label htmlFor="password" className="text-sm font-medium">Пароль</label>
               <Input
                 id="password"
+                name="password"
                 type="password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -121,7 +131,9 @@ export default function RegisterPage() {
               <label htmlFor="confirm_password" className="text-sm font-medium">Подтвердите пароль</label>
               <Input
                 id="confirm_password"
+                name="confirm-password"
                 type="password"
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
