@@ -65,6 +65,10 @@ async def sync_bike_status(db: AsyncSession, lead: Lead) -> None:
     if not bike or bike.deleted_at is not None:
         return
 
+    # Обслуживание важнее воронки: пока байк на ТО, этапы его не трогают
+    if bike.status == BikeStatus.MAINTENANCE:
+        return
+
     bike.status = target
 
 

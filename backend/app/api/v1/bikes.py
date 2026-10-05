@@ -10,7 +10,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
-from app.models import Bike, BikeStatus, BikePrice, Branch, User, UserRole
+from app.models import Bike, BikeStatus, BikePrice, Branch, PipelineStage, User, UserRole
 from app.schemas.rental import (
     BikeResponse,
     BikeListResponse,
@@ -211,6 +211,23 @@ async def _load_bike(db: AsyncSession, bike_id: UUID):
     return await _with_rental_state(db, bike)
 
 
+async def restore_status_from_crm(db: AsyncSession, bike) -> None:
+    """Возвращает статусу байка значение из этапа воронки связанной сделки."""
+    from app.api.v1.leads import STAGE_BIKE_STATUS
+    from app.models import Lead
+
+    lead = (
+        await db.execute(select(Lead).where(Lead.bike_id == bike.id))
+    ).scalars().first()
+    if not lead or not lead.stage_id:
+        return
+
+    stage = await db.get(PipelineStage, lead.stage_id)
+    target = STAGE_BIKE_STATUS.get(stage.name if stage else "")
+    if target is not None:
+        bike.status = target
+
+
 @router.post("", response_model=BikeResponse, status_code=status.HTTP_201_CREATED)
 async def create_bike(
     payload: BikeCreate,
@@ -240,6 +257,12 @@ async def update_bike(
     data = payload.model_dump(exclude={"prices"}, exclude_unset=True)
     for field, value in data.items():
         setattr(bike, field, value)
+
+    # Статус ведёт воронка. Из гаража разрешено только ставить и снимать обслуживание.
+    if "status" in data and data["status"] == BikeStatus.MAINTENANCE:
+        bike.status = BikeStatus.MAINTENANCE
+    elif "status" in data:
+        await restore_status_from_crm(db, bike)
 
     if payload.prices is not None:
         await _apply_prices(db, bike.id, payload.prices)

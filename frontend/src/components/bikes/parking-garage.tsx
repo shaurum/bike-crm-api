@@ -67,16 +67,20 @@ interface Branch {
   name: string;
 }
 
-const NONE = "__none__";
-
 const STATUS_LABELS: Record<string, string> = {
   available: "Свободен",
-  reserved: "Зарезервирован",
+  reserved: "Резерв",
   rented: "В аренде",
   maintenance: "На обслуживании",
   charging: "На зарядке",
   relocation: "Перемещение",
 };
+
+function statusBadgeVariant(status: string) {
+  if (status === "maintenance") return "destructive" as const;
+  if (status === "available") return "default" as const;
+  return "secondary" as const;
+}
 
 const WEEK = 7 * 24 * 60;
 const TWO_WEEKS = 14 * 24 * 60;
@@ -238,7 +242,6 @@ export function BikeDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [branchId, setBranchId] = useState<string>(NONE);
   const [model, setModel] = useState("");
   const [frameNumber, setFrameNumber] = useState("");
   const [color, setColor] = useState("");
@@ -248,7 +251,6 @@ export function BikeDialog({
   const [battery, setBattery] = useState("");
   const [purchaseDate, setPurchaseDate] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
-  const [status, setStatus] = useState<string>("available");
   const [notes, setNotes] = useState("");
   const [weekPrice, setWeekPrice] = useState("");
   const [twoWeekPrice, setTwoWeekPrice] = useState("");
@@ -259,7 +261,6 @@ export function BikeDialog({
 
   const hydrate = useCallback((data: BikeItem) => {
     setBike(data);
-    setBranchId(data.branch?.id ?? NONE);
     setModel(data.model ?? "");
     setFrameNumber(data.frame_number ?? "");
     setColor(data.color ?? "");
@@ -268,7 +269,6 @@ export function BikeDialog({
     setMaxSpeed(data.max_speed != null ? String(data.max_speed) : "");
     setBattery(data.battery_capacity != null ? String(data.battery_capacity) : "");
     setPurchaseDate(toDateInput(data.purchase_date));
-    setStatus(data.status);
     setNotes(data.notes ?? "");
     setWeekPrice(tierFor(data.prices, WEEK)?.price != null ? String(tierFor(data.prices, WEEK)!.price) : "");
     setTwoWeekPrice(
@@ -306,13 +306,29 @@ export function BikeDialog({
 
   const numOrNull = (v: string) => (v === "" ? null : Number(v));
 
+  const toggleMaintenance = async (next: boolean) => {
+    if (!bike) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await bikesApi.update(bike.id, {
+        status: next ? "maintenance" : "available",
+      });
+      hydrate(res.data as BikeItem);
+      onSaved();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось изменить статус");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
     if (!bike) return;
     setSaving(true);
     setError("");
     try {
       const res = await bikesApi.update(bike.id, {
-        branch_id: branchId === NONE ? null : branchId,
         model,
         frame_number: frameNumber || null,
         color: color || null,
@@ -322,7 +338,6 @@ export function BikeDialog({
         battery_capacity: numOrNull(battery),
         purchase_date: purchaseDate ? new Date(purchaseDate).toISOString() : null,
         purchase_price: numOrNull(purchasePrice),
-        status,
         notes: notes || null,
         prices: {
           week_price: numOrNull(weekPrice),
@@ -357,6 +372,7 @@ export function BikeDialog({
   };
 
   const rented = bike?.is_rented || bike?.status === "rented";
+  const isMaintenance = bike?.status === "maintenance";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -527,51 +543,25 @@ export function BikeDialog({
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium" htmlFor="b-branch">
-                    Филиал
-                  </label>
-                  <Select value={branchId} onValueChange={setBranchId}>
-                    <SelectTrigger id="b-branch">
-                      <SelectValue placeholder="Не выбран" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {branches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="space-y-1.5 sm:col-span-2">
-                  <label className="text-sm font-medium" htmlFor="b-status">
-                    Статус
-                  </label>
-                  <Select value={status} onValueChange={setStatus} disabled={rented}>
-                    <SelectTrigger id="b-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {rented && (
-                    <p className="text-xs text-muted-foreground">
-                      Статус в аренде определяется активной бронью
-                    </p>
-                  )}
-                  {!rented && (
-                    <p className="text-xs text-muted-foreground">
-                      Если байк привязан к сделке, статус переключается сам по
-                      этапу воронки
-                    </p>
-                  )}
+                  <label className="text-sm font-medium">Статус</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={statusBadgeVariant(bike.status)}>
+                      {STATUS_LABELS[bike.status] ?? bike.status}
+                    </Badge>
+                    <Button
+                      variant={isMaintenance ? "default" : "outline"}
+                      size="sm"
+                      disabled={saving}
+                      onClick={() => toggleMaintenance(!isMaintenance)}
+                    >
+                      {isMaintenance ? "Снять с обслуживания" : "На обслуживание"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Статус переключается сам по этапу воронки у связанной сделки.
+                    Отсюда доступно только обслуживание.
+                  </p>
                 </div>
               </div>
 
@@ -672,7 +662,6 @@ function AddBikeDialog({
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [branchId, setBranchId] = useState<string>(NONE);
   const [model, setModel] = useState("");
   const [frameNumber, setFrameNumber] = useState("");
   const [weekPrice, setWeekPrice] = useState("");
@@ -687,9 +676,9 @@ function AddBikeDialog({
       setError("Укажите модель");
       return;
     }
-    const branch = branchId === NONE ? branches[0]?.id : branchId;
+    const branch = branches[0]?.id;
     if (!branch) {
-      setError("Нет филиала — создайте филиал в разделе «Парковка»");
+      setError("В системе нет филиала");
       return;
     }
     setSaving(true);
@@ -725,10 +714,7 @@ function AddBikeDialog({
       open={open}
       onOpenChange={(v) => {
         setOpen(v);
-        if (v) {
-          setBranchId(branches[0]?.id ?? NONE);
-          setError("");
-        }
+        if (v) setError("");
       }}
     >
       <DialogTrigger asChild>
@@ -746,24 +732,6 @@ function AddBikeDialog({
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="nb-branch">
-              Филиал
-            </label>
-            <Select value={branchId} onValueChange={setBranchId}>
-              <SelectTrigger id="nb-branch">
-                <SelectValue placeholder="Выберите филиал" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="nb-model">
               Модель
