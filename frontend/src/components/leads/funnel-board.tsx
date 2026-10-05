@@ -1,7 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Phone, Mail, Plus, RefreshCw } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Phone, Mail, Plus, RefreshCw, GripVertical } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +69,11 @@ interface Source {
 }
 
 const NO_SOURCE = "__none__";
+const NO_STAGE = "__none__";
+
+/* ------------------------------------------------------------------ */
+/* Добавление лида                                                     */
+/* ------------------------------------------------------------------ */
 
 function AddLeadDialog({
   sources,
@@ -65,15 +90,6 @@ function AddLeadDialog({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const reset = () => {
-    setName("");
-    setPhone("");
-    setEmail("");
-    setMessage("");
-    setError("");
-    setSourceId(sources.find((s) => s.type === "manual")?.id ?? NO_SOURCE);
-  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +108,10 @@ function AddLeadDialog({
         initial_message: message || undefined,
       });
       setOpen(false);
-      reset();
+      setName("");
+      setPhone("");
+      setEmail("");
+      setMessage("");
       onCreated();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось создать лид");
@@ -214,30 +233,13 @@ function AddLeadDialog({
   );
 }
 
-function LeadCard({
-  lead,
-  stages,
-  onMoved,
-}: {
-  lead: Lead;
-  stages: Stage[];
-  onMoved: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
+/* ------------------------------------------------------------------ */
+/* Карточка лида                                                       */
+/* ------------------------------------------------------------------ */
 
-  const move = async (stageId: string) => {
-    if (!stageId || stageId === lead.stage_id) return;
-    setBusy(true);
-    try {
-      await leadsApi.changeStage(lead.id, stageId);
-      onMoved();
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function LeadCardBody({ lead }: { lead: Lead }) {
   return (
-    <div className="rounded-lg border bg-white p-3 shadow-sm">
+    <>
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium leading-tight">
           {lead.client_name || "Без имени"}
@@ -252,40 +254,151 @@ function LeadCard({
       <div className="mt-2 space-y-1 text-xs text-muted-foreground">
         {lead.client_phone && (
           <p className="flex items-center gap-1.5">
-            <Phone className="h-3 w-3" aria-hidden />
+            <Phone className="h-3 w-3 shrink-0" aria-hidden />
             {lead.client_phone}
           </p>
         )}
         {lead.client_email && (
-          <p className="flex items-center gap-1.5 truncate">
-            <Mail className="h-3 w-3" aria-hidden />
+          <p className="flex items-center gap-1.5">
+            <Mail className="h-3 w-3 shrink-0" aria-hidden />
             <span className="truncate">{lead.client_email}</span>
           </p>
         )}
       </div>
+    </>
+  );
+}
 
-      <Select value={lead.stage_id ?? ""} onValueChange={move} disabled={busy}>
-        <SelectTrigger className="mt-2 h-8 w-full text-xs">
-          <SelectValue placeholder="Этап" />
-        </SelectTrigger>
-        <SelectContent>
-          {stages.map((s) => (
-            <SelectItem key={s.id} value={s.id} className="text-xs">
-              {s.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+function SortableLeadCard({ lead }: { lead: Lead }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: lead.id, data: { stageId: lead.stage_id } });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "rounded-lg border bg-white p-3 shadow-sm",
+        isDragging && "opacity-40"
+      )}
+    >
+      <div className="flex items-start gap-1.5">
+        <button
+          type="button"
+          className="mt-0.5 cursor-grab touch-none rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing"
+          aria-label="Перетащить лид"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" aria-hidden />
+        </button>
+        <div className="min-w-0 flex-1">
+          <LeadCardBody lead={lead} />
+        </div>
+      </div>
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Колонка этапа                                                       */
+/* ------------------------------------------------------------------ */
+
+function StageColumn({
+  stage,
+  leads,
+}: {
+  stage: Stage;
+  leads: Lead[];
+}) {
+  const { setNodeRef, isOver } = useSortable({
+    id: stage.id,
+    data: { type: "column", stageId: stage.id },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex w-64 shrink-0 flex-col rounded-lg bg-gray-100 p-2 transition-colors",
+        isOver && "bg-gray-200 ring-2 ring-primary/40"
+      )}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: stage.color }}
+            aria-hidden
+          />
+          <span className="truncate text-sm font-semibold">{stage.name}</span>
+        </div>
+        <Badge variant="secondary" className="shrink-0">
+          {leads.length}
+        </Badge>
+      </div>
+
+      <SortableContext
+        items={leads.map((l) => l.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="flex min-h-[80px] flex-col gap-2">
+          {leads.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+              Перетащите лид сюда
+            </p>
+          ) : (
+            leads.map((lead) => <SortableLeadCard key={lead.id} lead={lead} />)
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Воронка                                                             */
+/* ------------------------------------------------------------------ */
+
 export function FunnelBoard() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [columns, setColumns] = useState<Record<string, Lead[]>>({});
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const group = useCallback(
+    (items: Lead[]) => {
+      const map: Record<string, Lead[]> = {};
+      stages.forEach((s) => {
+        map[s.id] = [];
+      });
+      map[NO_STAGE] = [];
+      items.forEach((lead) => {
+        const key = lead.stage_id ?? NO_STAGE;
+        if (!map[key]) map[key] = [];
+        map[key].push(lead);
+      });
+      return map;
+    },
+    [stages]
+  );
 
   const load = useCallback(async () => {
     setError("");
@@ -295,32 +408,108 @@ export function FunnelBoard() {
         leadsApi.sources(),
         leadsApi.list({ size: 100 }),
       ]);
-      setStages(stagesRes.data as Stage[]);
+      const loadedStages = stagesRes.data as Stage[];
+      const loadedLeads = (leadsRes.data?.items ?? []) as Lead[];
+
+      setStages(loadedStages);
       setSources(sourcesRes.data as Source[]);
-      setLeads((leadsRes.data?.items ?? []) as Lead[]);
+      setLeads(loadedLeads);
+      setColumns(group(loadedLeads));
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось загрузить воронку");
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stages.length]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, Lead[]>();
-    stages.forEach((s) => map.set(s.id, []));
-    leads.forEach((lead) => {
-      const key = lead.stage_id ?? "";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(lead);
-    });
-    return map;
-  }, [stages, leads]);
+  const findStage = (id: string): string | null => {
+    const found = stages.find((s) => s.id === id);
+    return found ? found.id : null;
+  };
 
-  const unassigned = leads.filter((l) => !l.stage_id);
+  const onDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  };
+
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    const leadId = String(active.id);
+
+    // Приземлились в другую колонку
+    const overIsColumn = stages.some((s) => s.id === String(over.id));
+    let targetStageId: string;
+
+    if (overIsColumn) {
+      targetStageId = String(over.id);
+    } else {
+      const overLead = leads.find((l) => l.id === String(over.id));
+      if (!overLead) return;
+      targetStageId = overLead.stage_id ?? NO_STAGE;
+    }
+
+    const sourceStageId =
+      leads.find((l) => l.id === leadId)?.stage_id ?? NO_STAGE;
+
+    if (sourceStageId === targetStageId) {
+      // Перестановка внутри одной колонки
+      setColumns((prev) => {
+        const list = prev[sourceStageId] ?? [];
+        const oldIndex = list.findIndex((l) => l.id === leadId);
+        const newIndex = list.findIndex((l) => l.id === String(over.id));
+        if (oldIndex < 0 || newIndex < 0) return prev;
+        return { ...prev, [sourceStageId]: arrayMove(list, oldIndex, newIndex) };
+      });
+      return;
+    }
+
+    const previous = columns;
+    const next = { ...columns };
+    next[sourceStageId] = (next[sourceStageId] ?? []).filter(
+      (l) => l.id !== leadId
+    );
+    next[targetStageId] = [...(next[targetStageId] ?? [])];
+
+    const movedLead = leads.find((l) => l.id === leadId);
+    if (!movedLead) return;
+
+    const overIndex = next[targetStageId].findIndex(
+      (l) => l.id === String(over.id)
+    );
+    const insertAt = overIndex >= 0 ? overIndex : next[targetStageId].length;
+    next[targetStageId].splice(insertAt, 0, movedLead);
+    setColumns(next);
+
+    const realStageId = findStage(targetStageId);
+    if (!realStageId) {
+      setColumns(previous);
+      return;
+    }
+
+    try {
+      await leadsApi.changeStage(leadId, realStageId);
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, stage_id: realStageId } : l))
+      );
+    } catch {
+      setColumns(previous);
+      load();
+    }
+  };
+
+  const activeLead = useMemo(
+    () => leads.find((l) => l.id === activeId) ?? null,
+    [leads, activeId]
+  );
 
   if (loading) {
     return (
@@ -350,64 +539,38 @@ export function FunnelBoard() {
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</p>
       )}
 
-      {unassigned.length > 0 && (
-        <div className="rounded-lg border border-dashed border-amber-400 bg-amber-50 p-3">
-          <p className="text-sm font-medium text-amber-900">
-            Без этапа: {unassigned.length}
-          </p>
-        </div>
-      )}
-
-      <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-        <div className="flex min-w-max gap-3">
-          {stages.map((stage) => {
-            const items = grouped.get(stage.id) ?? [];
-            return (
-              <div
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+          <div className="flex min-w-max gap-3">
+            {stages.map((stage) => (
+              <StageColumn
                 key={stage.id}
-                className="flex w-64 shrink-0 flex-col rounded-lg bg-gray-100 p-2"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: stage.color }}
-                      aria-hidden
-                    />
-                    <span className="truncate text-sm font-semibold">
-                      {stage.name}
-                    </span>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0">
-                    {items.length}
-                  </Badge>
-                </div>
-
-                <div className="flex min-h-[80px] flex-col gap-2">
-                  {items.length === 0 ? (
-                    <p
-                      className={cn(
-                        "rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground"
-                      )}
-                    >
-                      Пусто
-                    </p>
-                  ) : (
-                    items.map((lead) => (
-                      <LeadCard
-                        key={lead.id}
-                        lead={lead}
-                        stages={stages}
-                        onMoved={load}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                stage={stage}
+                leads={columns[stage.id] ?? []}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+
+        <DragOverlay>
+          {activeLead ? (
+            <div className="rounded-lg border bg-white p-3 shadow-lg">
+              <LeadCardBody lead={activeLead} />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      <p className="text-xs text-muted-foreground">
+        Перетащите карточку за левый край (⋮⋮) в другую колонку, чтобы изменить
+        этап. На телефоне — зажать и тянуть.
+      </p>
     </div>
   );
 }
