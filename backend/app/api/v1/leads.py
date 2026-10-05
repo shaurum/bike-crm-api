@@ -133,12 +133,16 @@ async def create_lead(
         select(PipelineStage).where(PipelineStage.is_default == True)
     )
 
+    if payload.bike_id:
+        await ensure_bike_is_free(db, payload.bike_id, None)
+
     lead = Lead(
         source_id=source.id,
         external_id=f"manual-{uuid4().hex[:8]}",
         client_name=payload.client_name,
         client_phone=payload.client_phone,
         client_email=payload.client_email,
+        bike_id=payload.bike_id,
         initial_message=payload.initial_message,
         utm=payload.utm or {},
         status=LeadStatus.NEW,
@@ -158,12 +162,15 @@ async def create_lead(
     )
     await db.commit()
 
+    await sync_bike_status(db, lead)
+
     result = await db.execute(
         select(Lead)
         .options(
             selectinload(Lead.source),
             selectinload(Lead.stage),
             selectinload(Lead.messages),
+            selectinload(Lead.comments),
         )
         .where(Lead.id == lead.id)
     )
@@ -193,6 +200,41 @@ async def get_lead(
     return lead
 
 
+async def ensure_bike_is_free(db: AsyncSession, bike_id: UUID, lead_id) -> None:
+    """Нельзя выдать байк, который уже занят другой сделкой."""
+    taken = (
+        await db.execute(
+            select(Lead.id).where(Lead.bike_id == bike_id, Lead.id != lead_id).limit(1)
+        )
+    ).scalars().first()
+    if taken:
+        raise HTTPException(
+            status_code=409,
+            detail="Байк уже привязан к другой сделке",
+        )
+
+
+async def release_bike(db: AsyncSession, bike_id: UUID) -> None:
+    """Возвращает байк в свободные, если он не привязан к другой сделке.
+
+    Байк на обслуживании не трогаем — это ручной статус гаража.
+    """
+    bike = await db.get(Bike, bike_id)
+    if not bike or bike.deleted_at is not None:
+        return
+    if bike.status == BikeStatus.MAINTENANCE:
+        return
+
+    other = (
+        await db.execute(select(Lead.id).where(Lead.bike_id == bike_id).limit(1))
+    ).scalars().first()
+    if other:
+        return
+
+    bike.status = BikeStatus.AVAILABLE
+    await db.commit()
+
+
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_lead(
     lead_id: UUID,
@@ -204,11 +246,18 @@ async def delete_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
 
+    bike_id = lead.bike_id
+
     # Задачи ссылаются на лид через SET NULL — удаляем явно, чтобы не осталось мусора
     await db.execute(delete(Task).where(Task.related_lead_id == lead_id))
 
     await db.delete(lead)
     await db.commit()
+
+    # Освобождаем байк: без сделки он не должен висеть в аренде или резерве
+    if bike_id:
+        await release_bike(db, bike_id)
+
     return None
 
 
@@ -227,6 +276,10 @@ async def update_deal(
     data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
         setattr(lead, field, value)
+
+    bike_id = data.get("bike_id", lead.bike_id)
+    if bike_id:
+        await ensure_bike_is_free(db, bike_id, lead.id)
 
     await sync_bike_status(db, lead)
     await db.commit()

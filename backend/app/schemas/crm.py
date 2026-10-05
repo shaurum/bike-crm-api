@@ -1,7 +1,18 @@
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+
+
+class BlankEmailMixin(BaseModel):
+    """Пустая строка в email равносильна отсутствию значения."""
+
+    @field_validator("client_email", mode="before", check_fields=False)
+    @classmethod
+    def _blank_email_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 from app.models import (
     LeadSourceType, LeadStatus, TaskType, TaskStatus,
@@ -81,7 +92,7 @@ class LeadCommentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LeadBase(BaseModel):
+class LeadBase(BlankEmailMixin):
     source_id: UUID
     external_id: str
     raw_payload: dict = {}
@@ -99,13 +110,14 @@ class LeadCreate(LeadBase):
     pass
 
 
-class LeadManualCreate(BaseModel):
+class LeadManualCreate(BlankEmailMixin):
     """Ручное создание лида оператором."""
 
     source_id: UUID
     client_name: Optional[str] = None
     client_phone: Optional[str] = None
     client_email: Optional[EmailStr] = None
+    bike_id: Optional[UUID] = None
     initial_message: Optional[str] = None
     utm: dict = {}
 

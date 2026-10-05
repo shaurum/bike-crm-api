@@ -93,6 +93,8 @@ class BikeResponse(BikeBase):
     is_rented: bool = False
     active_booking_id: Optional[UUID] = None
     active_booking_status: Optional[str] = None
+    linked_lead_id: Optional[UUID] = None
+    linked_stage_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 
