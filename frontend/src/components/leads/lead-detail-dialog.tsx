@@ -20,7 +20,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -237,29 +236,33 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex flex-wrap items-center gap-2">
-            {lead?.client_name || "Лид"}
-            {lead?.source?.name && (
-              <Badge variant="secondary">{lead.source.name}</Badge>
-            )}
-          </DialogTitle>
-          <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1">
-            {lead?.client_phone && (
-              <span className="flex items-center gap-1">
-                <Phone className="h-3 w-3" aria-hidden />
-                {lead.client_phone}
-              </span>
-            )}
-            {lead?.client_email && (
-              <span className="flex items-center gap-1">
-                <Mail className="h-3 w-3" aria-hidden />
-                {lead.client_email}
-              </span>
-            )}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <div className="shrink-0 border-b px-5 pb-4 pt-5">
+          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              {lead?.client_name || "Лид"}
+              {lead?.source?.name && (
+                <Badge variant="secondary">{lead.source.name}</Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1">
+              {lead?.client_phone && (
+                <span className="flex items-center gap-1">
+                  <Phone className="h-3 w-3" aria-hidden />
+                  {lead.client_phone}
+                </span>
+              )}
+              {lead?.client_email && (
+                <span className="flex items-center gap-1">
+                  <Mail className="h-3 w-3" aria-hidden />
+                  {lead.client_email}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 
         {loading && (
           <p className="py-6 text-center text-sm text-muted-foreground">
@@ -410,21 +413,25 @@ export function LeadDetailDialog({
               </div>
             </div>
 
-            <DialogFooter>
-              {lead.amount != null && (
-                <p className="mr-auto self-center text-sm text-muted-foreground">
-                  Сумма сделки:{" "}
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(lead.amount)}
-                  </span>
-                </p>
-              )}
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Закрыть
-              </Button>
-            </DialogFooter>
-          </div>
+            </div>
         )}
+        </div>
+
+        <div className="shrink-0 border-t bg-white px-5 py-3">
+          <div className="flex items-center gap-2">
+            {lead?.amount != null && (
+              <p className="mr-auto text-sm text-muted-foreground">
+                Сумма:{" "}
+                <span className="font-semibold text-foreground">
+                  {formatCurrency(lead.amount)}
+                </span>
+              </p>
+            )}
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Закрыть
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

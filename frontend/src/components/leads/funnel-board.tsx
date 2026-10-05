@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -48,6 +48,7 @@ import {
   ColumnVisibilityMenu,
   readHiddenStages,
 } from "@/components/leads/column-visibility-menu";
+import { useIsDesktop } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 interface Stage {
@@ -243,6 +244,34 @@ function AddLeadDialog({
 /* Карточка лида                                                       */
 /* ------------------------------------------------------------------ */
 
+function LeadMeta({ lead }: { lead: Lead }) {
+  return (
+    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+      {lead.client_phone && (
+        <p className="flex items-center gap-1.5">
+          <Phone className="h-3 w-3 shrink-0" aria-hidden />
+          {lead.client_phone}
+        </p>
+      )}
+      {lead.client_email && (
+        <p className="flex items-center gap-1.5">
+          <Mail className="h-3 w-3 shrink-0" aria-hidden />
+          <span className="truncate">{lead.client_email}</span>
+        </p>
+      )}
+      {lead.amount != null && (
+        <p className="text-xs font-semibold text-foreground">
+          {new Intl.NumberFormat("ru-RU", {
+            style: "currency",
+            currency: "RUB",
+            maximumFractionDigits: 0,
+          }).format(lead.amount)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function LeadCardBody({ lead }: { lead: Lead }) {
   return (
     <>
@@ -256,22 +285,27 @@ function LeadCardBody({ lead }: { lead: Lead }) {
           </Badge>
         )}
       </div>
-
-      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-        {lead.client_phone && (
-          <p className="flex items-center gap-1.5">
-            <Phone className="h-3 w-3 shrink-0" aria-hidden />
-            {lead.client_phone}
-          </p>
-        )}
-        {lead.client_email && (
-          <p className="flex items-center gap-1.5">
-            <Mail className="h-3 w-3 shrink-0" aria-hidden />
-            <span className="truncate">{lead.client_email}</span>
-          </p>
-        )}
-      </div>
+      <LeadMeta lead={lead} />
     </>
+  );
+}
+
+function DeleteButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600"
+    >
+      <Trash2 className="h-4 w-4" aria-hidden />
+    </button>
   );
 }
 
@@ -320,25 +354,9 @@ function SortableLeadCard({
             aria-label="Открыть карточку лида"
           >
             <LeadCardBody lead={lead} />
-            {lead.amount != null && (
-              <p className="mt-2 text-xs font-semibold">
-                {new Intl.NumberFormat("ru-RU", {
-                  style: "currency",
-                  currency: "RUB",
-                  maximumFractionDigits: 0,
-                }).format(lead.amount)}
-              </p>
-            )}
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => onDelete(lead)}
-          aria-label="Удалить лид"
-          className="mt-0.5 shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden />
-        </button>
+        <DeleteButton onClick={() => onDelete(lead)} label="Удалить лид" />
       </div>
     </div>
   );
@@ -412,6 +430,142 @@ function StageColumn({
 }
 
 /* ------------------------------------------------------------------ */
+/* Мобильный вид: вкладки этапов + список                                */
+/* ------------------------------------------------------------------ */
+
+function MobileStageTabs({
+  stages,
+  counts,
+  activeId,
+  onSelect,
+}: {
+  stages: Stage[];
+  counts: Record<string, number>;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    if (activeId && refs.current[activeId]) {
+      refs.current[activeId]!.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [activeId]);
+
+  return (
+    <div className="-mx-4 overflow-x-auto px-4">
+      <div className="flex min-w-max gap-2 pb-1">
+        {stages.map((stage) => {
+          const active = stage.id === activeId;
+          return (
+            <button
+              key={stage.id}
+              ref={(el) => {
+                refs.current[stage.id] = el;
+              }}
+              type="button"
+              onClick={() => onSelect(stage.id)}
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-gray-200 bg-white text-gray-700"
+              )}
+            >
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: active ? "#fff" : stage.color }}
+                aria-hidden
+              />
+              {stage.name}
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                  active ? "bg-white/20" : "bg-gray-100"
+                )}
+              >
+                {counts[stage.id] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MobileStageList({
+  stage,
+  leads,
+  stages,
+  onOpen,
+  onDelete,
+  onMove,
+}: {
+  stage: Stage | null;
+  leads: Lead[];
+  stages: Stage[];
+  onOpen: (id: string) => void;
+  onDelete: (lead: Lead) => void;
+  onMove: (leadId: string, stageId: string) => void;
+}) {
+  if (!stage) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Все колонки скрыты — включите их в меню «Колонки»
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {leads.length === 0 ? (
+        <p className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-muted-foreground">
+          В этой стадии пока пусто
+        </p>
+      ) : (
+        leads.map((lead) => (
+          <div key={lead.id} className="rounded-lg border bg-white p-3 shadow-sm">
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => onOpen(lead.id)}
+                className="min-w-0 flex-1 cursor-pointer text-left"
+                aria-label="Открыть карточку лида"
+              >
+                <LeadCardBody lead={lead} />
+              </button>
+              <DeleteButton onClick={() => onDelete(lead)} label="Удалить лид" />
+            </div>
+
+            <Select
+              value={lead.stage_id ?? ""}
+              onValueChange={(v) => onMove(lead.id, v)}
+            >
+              <SelectTrigger className="mt-2 h-10 w-full text-sm">
+                <SelectValue placeholder="Этап" />
+              </SelectTrigger>
+              <SelectContent>
+                {stages.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="text-sm">
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Воронка                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -425,6 +579,7 @@ export function FunnelBoard() {
   const [hiddenStages, setHiddenStages] = useState<string[]>([]);
   const [toDelete, setToDelete] = useState<Lead | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [mobileStageId, setMobileStageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -570,6 +725,20 @@ export function FunnelBoard() {
     [stages, hiddenStages]
   );
 
+  const isDesktop = useIsDesktop();
+
+  useEffect(() => {
+    if (!isDesktop || !visibleStages.length) return;
+    setMobileStageId((prev) =>
+      prev && visibleStages.some((s) => s.id === prev)
+        ? prev
+        : visibleStages[0].id
+    );
+  }, [isDesktop, visibleStages]);
+
+  const activeMobileStage =
+    visibleStages.find((s) => s.id === mobileStageId) ?? visibleStages[0] ?? null;
+
   const confirmDelete = async () => {
     if (!toDelete) return;
     setDeleting(true);
@@ -584,6 +753,39 @@ export function FunnelBoard() {
       setDeleting(false);
     }
   };
+
+  const moveLead = async (leadId: string, stageId: string) => {
+    if (stageId === NO_STAGE) return;
+    try {
+      await leadsApi.changeStage(leadId, stageId);
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, stage_id: stageId } : l))
+      );
+      setColumns((prev) => {
+        const lead = leads.find((l) => l.id === leadId);
+        if (!lead) return prev;
+        const from = lead.stage_id ?? NO_STAGE;
+        if (from === stageId) return prev;
+        return {
+          ...prev,
+          [from]: (prev[from] ?? []).filter((l) => l.id !== leadId),
+          [stageId]: [...(prev[stageId] ?? []), lead],
+        };
+      });
+      } catch {
+      setError("Не удалось изменить стадию");
+      load();
+    }
+  };
+
+  const counts = useMemo(() => {
+    const acc: Record<string, number> = {};
+    leads.forEach((l) => {
+      const key = l.stage_id ?? NO_STAGE;
+      acc[key] = (acc[key] ?? 0) + 1;
+    });
+    return acc;
+  }, [leads]);
 
   if (loading) {
     return (
@@ -618,39 +820,61 @@ export function FunnelBoard() {
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</p>
       )}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => setActiveId(null)}
-      >
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-          <div className="flex min-w-max gap-3">
-            {visibleStages.map((stage) => (
-              <StageColumn
-                key={stage.id}
-                stage={stage}
-                leads={columns[stage.id] ?? []}
-                onOpen={setSelectedLeadId}
-                onDelete={setToDelete}
-              />
-            ))}
-          </div>
-        </div>
-
-        <DragOverlay>
-          {activeLead ? (
-            <div className="rounded-lg border bg-white p-3 shadow-lg">
-              <LeadCardBody lead={activeLead} />
+      {isDesktop ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setActiveId(null)}
+        >
+          <div className="-mx-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:px-0">
+            <div className="flex min-w-max gap-3">
+              {visibleStages.map((stage) => (
+                <StageColumn
+                  key={stage.id}
+                  stage={stage}
+                  leads={columns[stage.id] ?? []}
+                  onOpen={setSelectedLeadId}
+                  onDelete={setToDelete}
+                />
+              ))}
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+          </div>
+
+          <DragOverlay>
+            {activeLead ? (
+              <div className="rounded-lg border bg-white p-3 shadow-lg">
+                <LeadCardBody lead={activeLead} />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : (
+        <div className="space-y-3">
+          <MobileStageTabs
+            stages={visibleStages}
+            counts={counts}
+            activeId={activeMobileStage?.id ?? null}
+            onSelect={setMobileStageId}
+          />
+          <MobileStageList
+            stage={activeMobileStage}
+            leads={
+              activeMobileStage ? columns[activeMobileStage.id] ?? [] : []
+            }
+            stages={visibleStages}
+            onOpen={setSelectedLeadId}
+            onDelete={setToDelete}
+            onMove={moveLead}
+          />
+        </div>
+      )}
 
       <p className="text-xs text-muted-foreground">
-        Клик по карточке открывает сделку. Перетащите за левый край (⋮⋮) в
-        другую колонку, чтобы изменить этап. На телефоне — зажать и тянуть.
+        {isDesktop
+          ? "Клик по карточке открывает сделку. Перетащите за левый край (⋮⋮) в другую колонку, чтобы изменить этап."
+          : "Коснитесь карточки, чтобы открыть сделку. Стадию меняйте списком в карточке."}
       </p>
 
       <LeadDetailDialog
