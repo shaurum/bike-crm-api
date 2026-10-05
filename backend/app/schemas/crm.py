@@ -76,6 +76,17 @@ class LeadCreate(LeadBase):
     pass
 
 
+class LeadManualCreate(BaseModel):
+    """Ручное создание лида оператором."""
+
+    source_id: UUID
+    client_name: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_email: Optional[EmailStr] = None
+    initial_message: Optional[str] = None
+    utm: dict = {}
+
+
 class LeadUpdate(BaseModel):
     status: Optional[LeadStatus] = None
     stage_id: Optional[UUID] = None
@@ -89,6 +100,16 @@ class LeadResponse(LeadBase):
     source: Optional[LeadSourceResponse] = None
     stage: Optional[PipelineStageResponse] = None
     messages: List[LeadMessageResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LeadListResponse(BaseModel):
+    items: List[LeadResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,6 +142,16 @@ class TaskResponse(TaskBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskListResponse(BaseModel):
+    items: List[TaskResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
 
     model_config = ConfigDict(from_attributes=True)
 

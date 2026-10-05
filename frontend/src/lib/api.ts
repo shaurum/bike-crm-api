@@ -100,6 +100,13 @@ export const leadsApi = {
     search?: string;
   }) => api.get("/leads", { params }),
   get: (id: string) => api.get(`/leads/${id}`),
+  create: (data: {
+    source_id: string;
+    client_name?: string;
+    client_phone?: string;
+    client_email?: string;
+    initial_message?: string;
+  }) => api.post("/leads", data),
   assign: (id: string, user_id: string) => api.patch(`/leads/${id}/assign`, null, { params: { user_id } }),
   changeStage: (id: string, stage_id: string) => api.patch(`/leads/${id}/stage`, null, { params: { stage_id } }),
   sources: () => api.get("/leads/sources/list"),

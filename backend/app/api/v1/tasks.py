@@ -8,11 +8,12 @@ from uuid import UUID
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import Task, TaskType, TaskStatus, User, UserRole
+from app.schemas.crm import TaskResponse, TaskListResponse
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.get("")
+@router.get("", response_model=TaskListResponse)
 async def list_tasks(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -58,7 +59,7 @@ async def list_tasks(
     }
 
 
-@router.get("/{task_id}")
+@router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: UUID,
     db: AsyncSession = Depends(get_db),

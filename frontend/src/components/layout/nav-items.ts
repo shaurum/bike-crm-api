@@ -4,7 +4,7 @@ import {
   Users,
   Bike,
   FileText,
-  CalendarCheck,
+  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,5 +20,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/customers", label: "Клиенты", icon: Users },
   { href: "/parking", label: "Парковка", icon: Bike },
   { href: "/documents", label: "Документы", icon: FileText },
-  { href: "/visits", label: "Посещения", icon: CalendarCheck },
+  { href: "/tasks", label: "Задачи", icon: ListChecks },
 ];

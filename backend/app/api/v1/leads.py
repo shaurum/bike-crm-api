@@ -1,18 +1,35 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from typing import Optional
-from uuid import UUID
+from typing import List, Optional
+from uuid import UUID, uuid4
 
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
-from app.models import Lead, LeadSource, PipelineStage, LeadStatus, User, UserRole
+from app.models import (
+    Lead,
+    LeadSource,
+    PipelineStage,
+    LeadStatus,
+    Task,
+    TaskType,
+    TaskStatus,
+    User,
+    UserRole,
+)
+from app.schemas.crm import (
+    LeadResponse,
+    LeadManualCreate,
+    LeadListResponse,
+    LeadSourceResponse,
+    PipelineStageResponse,
+)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
-@router.get("")
+@router.get("", response_model=LeadListResponse)
 async def list_leads(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -40,13 +57,10 @@ async def list_leads(
         query = query.where(Lead.assigned_to_id == assigned_to_id)
     if search:
         query = query.where(
-            Lead.client_name.ilike(f"%{search}%") |
-            Lead.client_phone.ilike(f"%{search}%") |
-            Lead.client_email.ilike(f"%{search}%")
+            Lead.client_name.ilike(f"%{search}%")
+            | Lead.client_phone.ilike(f"%{search}%")
+            | Lead.client_email.ilike(f"%{search}%")
         )
-
-    if current_user.role != UserRole.ADMIN:
-        query = query.where(Lead.assigned_to_id == current_user.id)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     query = query.order_by(Lead.created_at.desc()).offset((page - 1) * size).limit(size)
@@ -62,7 +76,58 @@ async def list_leads(
     }
 
 
-@router.get("/{lead_id}")
+@router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
+async def create_lead(
+    payload: LeadManualCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    source = await db.get(LeadSource, payload.source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Источник лида не найден")
+
+    default_stage = await db.scalar(
+        select(PipelineStage).where(PipelineStage.is_default == True)
+    )
+
+    lead = Lead(
+        source_id=source.id,
+        external_id=f"manual-{uuid4().hex[:8]}",
+        client_name=payload.client_name,
+        client_phone=payload.client_phone,
+        client_email=payload.client_email,
+        initial_message=payload.initial_message,
+        utm=payload.utm or {},
+        status=LeadStatus.NEW,
+        stage_id=default_stage.id if default_stage else None,
+    )
+    db.add(lead)
+    await db.flush()
+
+    db.add(
+        Task(
+            type=TaskType.CALL,
+            title="Связаться с клиентом",
+            related_lead_id=lead.id,
+            assignee_id=current_user.id,
+            status=TaskStatus.TODO,
+        )
+    )
+    await db.commit()
+
+    result = await db.execute(
+        select(Lead)
+        .options(
+            selectinload(Lead.source),
+            selectinload(Lead.stage),
+            selectinload(Lead.messages),
+        )
+        .where(Lead.id == lead.id)
+    )
+    return result.scalar_one()
+
+
+@router.get("/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -82,8 +147,6 @@ async def get_lead(
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
-    if current_user.role != UserRole.ADMIN and lead.assigned_to_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Нет доступа к этому лиду")
     return lead
 
 
@@ -116,20 +179,24 @@ async def change_stage(
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
-    if current_user.role != UserRole.ADMIN and lead.assigned_to_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Нет доступа")
     lead.stage_id = stage_id
+    if stage_id is not None:
+        stage = await db.get(PipelineStage, stage_id)
+        if stage and stage.name == "Отказ":
+            lead.status = LeadStatus.LOST
+        elif lead.status == LeadStatus.LOST:
+            lead.status = LeadStatus.QUALIFIED
     await db.commit()
     return {"message": "Этап изменен"}
 
 
-@router.get("/sources/list")
+@router.get("/sources/list", response_model=List[LeadSourceResponse])
 async def list_sources(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(LeadSource).where(LeadSource.is_active == True))
     return result.scalars().all()
 
 
-@router.get("/stages/list")
+@router.get("/stages/list", response_model=List[PipelineStageResponse])
 async def list_stages(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(PipelineStage).order_by(PipelineStage.order))
     return result.scalars().all()

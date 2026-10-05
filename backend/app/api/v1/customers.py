@@ -8,11 +8,12 @@ from uuid import UUID
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import Customer, User, UserRole
+from app.schemas.rental import CustomerResponse, CustomerListResponse
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
-@router.get("")
+@router.get("", response_model=CustomerListResponse)
 async def list_customers(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -46,7 +47,7 @@ async def list_customers(
     }
 
 
-@router.get("/{customer_id}")
+@router.get("/{customer_id}", response_model=CustomerResponse)
 async def get_customer(
     customer_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -63,7 +64,7 @@ async def get_customer(
     return customer
 
 
-@router.post("", status_code=201)
+@router.post("", response_model=CustomerResponse, status_code=201)
 async def create_customer(
     customer_data: dict,
     db: AsyncSession = Depends(get_db),

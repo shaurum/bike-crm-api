@@ -9,11 +9,12 @@ from datetime import datetime
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import Booking, BookingStatus, Bike, BikeStatus, Customer, Branch, User, UserRole
+from app.schemas.rental import BookingResponse, BookingListResponse
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 
-@router.get("")
+@router.get("", response_model=BookingListResponse)
 async def list_bookings(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -62,7 +63,7 @@ async def list_bookings(
     }
 
 
-@router.get("/{booking_id}")
+@router.get("/{booking_id}", response_model=BookingResponse)
 async def get_booking(
     booking_id: UUID,
     db: AsyncSession = Depends(get_db),

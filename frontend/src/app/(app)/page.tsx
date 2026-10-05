@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
+import { FunnelBoard } from "@/components/leads/funnel-board";
 import { dashboardApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -94,9 +95,11 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Панель управления</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Сводка по прокату за последние 30 дней
+          Воронка продаж и сводка по прокату за последние 30 дней
         </p>
       </div>
+
+      <FunnelBoard />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (

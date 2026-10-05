@@ -241,3 +241,38 @@ class MaintenanceRecordResponse(MaintenanceRecordBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class BikeListResponse(BaseModel):
+    items: List[BikeResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BookingListResponse(BaseModel):
+    items: List[BookingResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerListResponse(BaseModel):
+    items: List[CustomerResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BranchListResponse(BaseModel):
+    items: List[BranchResponse]
+
+    model_config = ConfigDict(from_attributes=True)

@@ -8,11 +8,12 @@ from uuid import UUID
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import Bike, BikeStatus, BikePrice, Branch, User, UserRole
+from app.schemas.rental import BikeResponse, BikeListResponse, BranchListResponse
 
 router = APIRouter(prefix="/bikes", tags=["bikes"])
 
 
-@router.get("")
+@router.get("", response_model=BikeListResponse)
 async def list_bikes(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -50,7 +51,7 @@ async def list_bikes(
     }
 
 
-@router.get("/{bike_id}")
+@router.get("/{bike_id}", response_model=BikeResponse)
 async def get_bike(
     bike_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -102,7 +103,7 @@ async def check_availability(
     }
 
 
-@router.get("/branches/list")
+@router.get("/branches/list", response_model=BranchListResponse)
 async def list_branches(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Branch).where(Branch.is_active == True))
     return result.scalars().all()
