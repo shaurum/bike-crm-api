@@ -3,6 +3,8 @@ import { useAuthStore } from "@/lib/store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export { API_URL };
+
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
   headers: {
@@ -136,6 +138,16 @@ export const bikesApi = {
     search?: string;
   }) => api.get("/bikes", { params }),
   get: (id: string) => api.get(`/bikes/${id}`),
+  create: (data: any) => api.post("/bikes", data),
+  update: (id: string, data: any) => api.patch(`/bikes/${id}`, data),
+  remove: (id: string) => api.delete(`/bikes/${id}`),
+  uploadPhoto: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/bikes/${id}/photo`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
   checkAvailability: (id: string, start_at: string, end_at: string) =>
     api.get(`/bikes/${id}/availability`, { params: { start_at, end_at } }),
   branches: () => api.get("/bikes/branches/list"),

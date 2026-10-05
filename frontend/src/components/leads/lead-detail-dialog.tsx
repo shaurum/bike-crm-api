@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { leadsApi, customersApi } from "@/lib/api";
+import { leadsApi, customersApi, bikesApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 
 interface Stage {
@@ -72,6 +72,14 @@ interface CustomerOption {
   id: string;
   full_name: string;
   phone: string | null;
+}
+
+interface BikeOption {
+  id: string;
+  model: string;
+  frame_number: string | null;
+  is_rented: boolean;
+  status: string;
 }
 
 const NONE = "__none__";
@@ -131,6 +139,7 @@ export function LeadDetailDialog({
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [bikes, setBikes] = useState<BikeOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [comment, setComment] = useState("");
@@ -160,14 +169,16 @@ export function LeadDetailDialog({
     setLoading(true);
     setError("");
     try {
-      const [leadRes, srcRes, custRes] = await Promise.all([
+      const [leadRes, srcRes, custRes, bikesRes] = await Promise.all([
         leadsApi.get(leadId),
         leadsApi.sources(),
         customersApi.list({ size: 100 }),
+        bikesApi.list({ size: 100 }),
       ]);
       hydrate(leadRes.data as LeadDetail);
       setSources(srcRes.data as Source[]);
       setCustomers(custRes.data?.items ?? []);
+      setBikes(bikesRes.data?.items ?? []);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось загрузить лид");
     } finally {
@@ -316,13 +327,24 @@ export function LeadDetailDialog({
                 </Select>
               </Field>
 
-              <Field label="Байк" icon={BikeIcon} hint="Появится вместе с парковкой">
-                <Select value={bikeId} onValueChange={setBikeId} disabled>
+              <Field
+                label="Байк"
+                icon={BikeIcon}
+                hint={bikes.length === 0 ? "Гараж пуст — добавьте байк в «Парковке»" : undefined}
+              >
+                <Select value={bikeId} onValueChange={setBikeId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Пока недоступно" />
+                    <SelectValue placeholder="Не выбран" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Не выбран</SelectItem>
+                    {bikes.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.model}
+                        {b.frame_number ? ` · ${b.frame_number}` : ""}
+                        {b.is_rented ? " (в аренде)" : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>

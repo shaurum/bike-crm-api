@@ -1,13 +1,16 @@
-import { Bike } from "lucide-react";
-import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { ParkingGarage } from "@/components/bikes/parking-garage";
 
 export default function ParkingPage() {
   return (
-    <PagePlaceholder
-      title="Парковка"
-      description="Флот электробайков: состояние, заряд батареи, обслуживание"
-      icon={Bike}
-      hint="Скоро здесь будет список байков"
-    />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Парковка</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Гараж устройств: характеристики, прайс и статус аренды
+        </p>
+      </div>
+
+      <ParkingGarage />
+    </div>
   );
 }
