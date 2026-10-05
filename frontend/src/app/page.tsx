@@ -13,19 +13,36 @@ import { Bike, Users, DollarSign, AlertTriangle, Calendar, CheckCircle, Clock } 
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, accessToken, logout } = useAuthStore();
+  const { user, accessToken, refreshToken, logout } = useAuthStore();
   const ready = useAuthReady();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
+
     if (!accessToken) {
-      router.push("/login");
+      if (refreshToken && !recovering) {
+        setRecovering(true);
+        authApi
+          .refresh(refreshToken)
+          .then((res) => {
+            useAuthStore.getState().setTokens(res.data.access_token, res.data.refresh_token);
+          })
+          .catch(() => {
+            logout();
+            router.push("/login");
+          })
+          .finally(() => setRecovering(false));
+        return;
+      }
+      if (!refreshToken) router.push("/login");
       return;
     }
+
     fetchStats();
-  }, [ready, accessToken, router]);
+  }, [ready, accessToken, refreshToken, recovering, router]);
 
   const fetchStats = async () => {
     try {
