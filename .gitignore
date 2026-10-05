@@ -49,3 +49,4 @@ nginx/ssl/
 # Temporary
 tmp/
 temp/
+*.tsbuildinfo
