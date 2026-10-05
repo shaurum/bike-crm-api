@@ -9,6 +9,7 @@ import structlog
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.logging import setup_logging, get_logger
+from app.api.v1 import api_router
 
 setup_logging()
 logger = get_logger(__name__)
@@ -40,6 +41,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.exception_handler(StarletteHTTPException)

@@ -1,6 +1,7 @@
 from datetime import timedelta
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -32,24 +33,27 @@ class UserCreate(BaseModel):
     full_name: str
     phone: str | None = None
     role: UserRole = UserRole.MANAGER
-    branch_id: str | None = None
+    branch_id: uuid.UUID | None = None
 
 
 class UserResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     full_name: str
     phone: str | None
     role: UserRole
-    branch_id: str | None
+    branch_id: uuid.UUID | None
     is_active: bool
 
     class Config:
         from_attributes = True
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
 async def get_current_user(
-    token: str = Depends(OAuth2PasswordRequestForm),
+    token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
@@ -57,8 +61,8 @@ async def get_current_user(
         detail="Неверные учетные данные",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    payload = decode_token(token.password)
-    if not payload or not verify_token_type(token.password, "access"):
+    payload = decode_token(token)
+    if not payload or not verify_token_type(token, "access"):
         raise credentials_exception
     user_id = payload.get("sub")
     if not user_id:
@@ -107,9 +111,12 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
-    payload = decode_token(refresh_token)
-    if not payload or not verify_token_type(refresh_token, "refresh"):
+async def refresh_token(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = decode_token(token)
+    if not payload or not verify_token_type(token, "refresh"):
         raise HTTPException(status_code=401, detail="Неверный refresh токен")
     user_id = payload.get("sub")
     if not user_id:

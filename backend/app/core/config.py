@@ -30,15 +30,8 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "bike_crm"
 
     @property
-    def DATABASE_URL(self) -> PostgresDsn:
-        return PostgresDsn.build(
-            scheme="postgresql+asyncpg",
-            username=self.POSTGRES_USER,
-            password=self.POSTGRES_PASSWORD,
-            host=self.POSTGRES_SERVER,
-            port=self.POSTGRES_PORT,
-            path=f"/{self.POSTGRES_DB}",
-        )
+    def DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

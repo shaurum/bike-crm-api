@@ -156,27 +156,6 @@ def upgrade() -> None:
     op.create_index('ix_lead_message_external', 'lead_message', ['external_msg_id'])
 
     op.create_table(
-        'task',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column('type', task_type_enum, nullable=False),
-        sa.Column('title', sa.String(255), nullable=False),
-        sa.Column('description', sa.Text, nullable=True),
-        sa.Column('due_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('status', task_status_enum, nullable=False, server_default='todo'),
-        sa.Column('related_lead_id', UUID(as_uuid=True), sa.ForeignKey('lead.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('related_booking_id', UUID(as_uuid=True), sa.ForeignKey('booking.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('related_bike_id', UUID(as_uuid=True), sa.ForeignKey('bike.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('assignee_id', UUID(as_uuid=True), sa.ForeignKey('user.id', ondelete='SET NULL'), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
-        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
-    )
-    op.create_index('ix_task_status_due', 'task', ['status', 'due_at'])
-    op.create_index('ix_task_assignee', 'task', ['assignee_id'])
-    op.create_index('ix_task_related_lead', 'task', ['related_lead_id'])
-    op.create_index('ix_task_related_booking', 'task', ['related_booking_id'])
-    op.create_index('ix_task_related_bike', 'task', ['related_bike_id'])
-
-    op.create_table(
         'booking_widget',
         sa.Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
         sa.Column('domain', sa.String(255), nullable=False, unique=True),
@@ -290,6 +269,27 @@ def upgrade() -> None:
     op.create_index('ix_booking_lead', 'booking', ['lead_id'])
 
     op.create_table(
+        'task',
+        sa.Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+        sa.Column('type', task_type_enum, nullable=False),
+        sa.Column('title', sa.String(255), nullable=False),
+        sa.Column('description', sa.Text, nullable=True),
+        sa.Column('due_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('status', task_status_enum, nullable=False, server_default='todo'),
+        sa.Column('related_lead_id', UUID(as_uuid=True), sa.ForeignKey('lead.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('related_booking_id', UUID(as_uuid=True), sa.ForeignKey('booking.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('related_bike_id', UUID(as_uuid=True), sa.ForeignKey('bike.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('assignee_id', UUID(as_uuid=True), sa.ForeignKey('user.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
+    )
+    op.create_index('ix_task_status_due', 'task', ['status', 'due_at'])
+    op.create_index('ix_task_assignee', 'task', ['assignee_id'])
+    op.create_index('ix_task_related_lead', 'task', ['related_lead_id'])
+    op.create_index('ix_task_related_booking', 'task', ['related_booking_id'])
+    op.create_index('ix_task_related_bike', 'task', ['related_bike_id'])
+
+    op.create_table(
         'maintenance_record',
         sa.Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
         sa.Column('bike_id', UUID(as_uuid=True), sa.ForeignKey('bike.id', ondelete='CASCADE'), nullable=False),
@@ -307,13 +307,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table('maintenance_record')
+    op.drop_table('task')
     op.drop_table('booking')
     op.drop_table('customer')
     op.drop_table('bike_price')
     op.drop_table('bike')
     op.drop_table('contract_template')
     op.drop_table('booking_widget')
-    op.drop_table('task')
     op.drop_table('lead_message')
     op.drop_table('lead')
     op.drop_table('user')

@@ -65,7 +65,7 @@ class Bike(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     purchase_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="Цена закупки")
     purchase_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Дата закупки")
     status: Mapped[BikeStatus] = mapped_column(
-        SQLEnum(BikeStatus, native_enum=False),
+        SQLEnum(BikeStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         default=BikeStatus.AVAILABLE,
         nullable=False,
         comment="Статус байка",
@@ -115,7 +115,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="ФИО")
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Телефон")
     role: Mapped[UserRole] = mapped_column(
-        SQLEnum(UserRole, native_enum=False),
+        SQLEnum(UserRole, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         default=UserRole.MANAGER,
         nullable=False,
         comment="Роль",
@@ -203,7 +203,7 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     actual_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Фактический конец")
 
     status: Mapped[BookingStatus] = mapped_column(
-        SQLEnum(BookingStatus, native_enum=False),
+        SQLEnum(BookingStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         default=BookingStatus.PENDING,
         nullable=False,
         comment="Статус брони",
@@ -222,7 +222,7 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     branch: Mapped["Branch"] = relationship(back_populates="bookings", lazy="selectin")
     bike: Mapped["Bike"] = relationship(back_populates="bookings", lazy="selectin")
     customer: Mapped["Customer"] = relationship(back_populates="bookings", lazy="selectin")
-    lead: Mapped[Optional["Lead"]] = relationship(back_populates="bookings", lazy="selectin")
+    lead: Mapped[Optional["Lead"]] = relationship(lazy="selectin")
     manager: Mapped[Optional["User"]] = relationship(lazy="selectin")
     tasks: Mapped[List["Task"]] = relationship(back_populates="booking", lazy="selectin")
 

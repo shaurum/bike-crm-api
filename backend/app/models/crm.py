@@ -47,7 +47,7 @@ class LeadSource(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lead_source"
 
     type: Mapped[LeadSourceType] = mapped_column(
-        SQLEnum(LeadSourceType, native_enum=False),
+        SQLEnum(LeadSourceType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         nullable=False,
         comment="Тип источника",
     )
@@ -105,7 +105,7 @@ class Lead(UUIDMixin, TimestampMixin, Base):
     client_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Email клиента")
 
     status: Mapped[LeadStatus] = mapped_column(
-        SQLEnum(LeadStatus, native_enum=False),
+        SQLEnum(LeadStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         default=LeadStatus.NEW,
         nullable=False,
         comment="Статус лида",
@@ -130,6 +130,7 @@ class Lead(UUIDMixin, TimestampMixin, Base):
     stage: Mapped[Optional["PipelineStage"]] = relationship(back_populates="leads", lazy="selectin")
     messages: Mapped[List["LeadMessage"]] = relationship(back_populates="lead", lazy="selectin", cascade="all, delete-orphan")
     tasks: Mapped[List["Task"]] = relationship(back_populates="lead", lazy="selectin")
+    assigned_to: Mapped[Optional["User"]] = relationship(back_populates="assigned_leads", lazy="selectin")
 
     __table_args__ = (
         Index("ix_lead_source_external_id", "source_id", "external_id", unique=True),
@@ -167,7 +168,7 @@ class Task(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "task"
 
     type: Mapped[TaskType] = mapped_column(
-        SQLEnum(TaskType, native_enum=False),
+        SQLEnum(TaskType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         nullable=False,
         comment="Тип задачи",
     )
@@ -175,7 +176,7 @@ class Task(UUIDMixin, TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Описание")
     due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Дедлайн")
     status: Mapped[TaskStatus] = mapped_column(
-        SQLEnum(TaskStatus, native_enum=False),
+        SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
         default=TaskStatus.TODO,
         nullable=False,
         comment="Статус",
@@ -209,6 +210,7 @@ class Task(UUIDMixin, TimestampMixin, Base):
     lead: Mapped[Optional["Lead"]] = relationship(back_populates="tasks", lazy="selectin")
     booking: Mapped[Optional["Booking"]] = relationship(back_populates="tasks", lazy="selectin")
     bike: Mapped[Optional["Bike"]] = relationship(back_populates="tasks", lazy="selectin")
+    assignee: Mapped[Optional["User"]] = relationship(back_populates="assigned_tasks", lazy="selectin")
 
     __table_args__ = (
         Index("ix_task_status_due", "status", "due_at"),

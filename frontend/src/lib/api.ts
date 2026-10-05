@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import { useAuthStore } from "@/lib/store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -11,11 +12,9 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -28,21 +27,29 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      try {
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (refreshToken) {
+      const { refreshToken, user, setAuth, logout } = useAuthStore.getState();
+
+      if (refreshToken) {
+        try {
           const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, null, {
             headers: { Authorization: `Bearer ${refreshToken}` },
           });
           const { access_token, refresh_token } = response.data;
-          localStorage.setItem("access_token", access_token);
-          localStorage.setItem("refresh_token", refresh_token);
+          if (user) {
+            setAuth(user, access_token, refresh_token);
+          } else {
+            useAuthStore.getState().setTokens(access_token, refresh_token);
+          }
           originalRequest.headers.Authorization = `Bearer ${access_token}`;
           return api(originalRequest);
+        } catch {
+          logout();
+          if (typeof window !== "undefined") {
+            window.location.href = "/login";
+          }
         }
-      } catch {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+      } else {
+        logout();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }

@@ -27,6 +27,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.login(email, password);
       const { access_token, refresh_token } = res.data;
+      useAuthStore.getState().setTokens(access_token, refresh_token);
       const meRes = await authApi.me();
       setAuth(meRes.data, access_token, refresh_token);
       router.push("/");
