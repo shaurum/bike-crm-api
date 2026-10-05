@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SQLEnum, Index, JSON, Boolean, DateTime
+from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SQLEnum, Index, JSON, Boolean, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from app.models.base import Base, UUIDMixin, TimestampMixin
@@ -126,11 +126,44 @@ class Lead(UUIDMixin, TimestampMixin, Base):
     utm: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="UTM-метки")
     initial_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Первое сообщение клиента")
 
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("customer.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Привязанный клиент",
+    )
+    bike_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("bike.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Выбранный байк",
+    )
+    amount: Mapped[Optional[float]] = mapped_column(
+        Numeric(12, 2), nullable=True, comment="Сумма по сделке"
+    )
+    deal_due_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Срок появления сделки"
+    )
+    rental_start_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Начало аренды"
+    )
+    rental_end_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Окончание аренды"
+    )
+
     source: Mapped["LeadSource"] = relationship(back_populates="leads", lazy="selectin")
     stage: Mapped[Optional["PipelineStage"]] = relationship(back_populates="leads", lazy="selectin")
     messages: Mapped[List["LeadMessage"]] = relationship(back_populates="lead", lazy="selectin", cascade="all, delete-orphan")
     tasks: Mapped[List["Task"]] = relationship(back_populates="lead", lazy="selectin")
     assigned_to: Mapped[Optional["User"]] = relationship(back_populates="assigned_leads", lazy="selectin")
+    customer: Mapped[Optional["Customer"]] = relationship(lazy="selectin")
+    bike: Mapped[Optional["Bike"]] = relationship(lazy="selectin")
+    comments: Mapped[List["LeadComment"]] = relationship(
+        back_populates="lead",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="LeadComment.created_at",
+    )
 
     __table_args__ = (
         Index("ix_lead_source_external_id", "source_id", "external_id", unique=True),
@@ -240,3 +273,27 @@ class ContractTemplate(UUIDMixin, TimestampMixin, Base):
     html_template: Mapped[str] = mapped_column(Text, nullable=False, comment="Jinja2 HTML шаблон")
     variables: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Описание переменных для UI")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="Шаблон по умолчанию")
+
+class LeadComment(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "lead_comment"
+
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("lead.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Лид",
+    )
+    author_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Автор комментария",
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False, comment="Текст комментария")
+
+    lead: Mapped["Lead"] = relationship(back_populates="comments")
+    author: Mapped[Optional["User"]] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_lead_comment_lead_created", "lead_id", "created_at"),
+    )

@@ -12,6 +12,7 @@ from app.models import (
     LeadSource,
     PipelineStage,
     LeadStatus,
+    LeadComment,
     Task,
     TaskType,
     TaskStatus,
@@ -22,6 +23,9 @@ from app.schemas.crm import (
     LeadResponse,
     LeadManualCreate,
     LeadListResponse,
+    LeadDealUpdate,
+    LeadCommentCreate,
+    LeadCommentResponse,
     LeadSourceResponse,
     PipelineStageResponse,
 )
@@ -148,6 +152,83 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
     return lead
+
+
+@router.patch("/{lead_id}/deal", response_model=LeadResponse)
+async def update_deal(
+    lead_id: UUID,
+    payload: LeadDealUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(lead, field, value)
+
+    await db.commit()
+
+    result = await db.execute(
+        select(Lead)
+        .options(
+            selectinload(Lead.source),
+            selectinload(Lead.stage),
+            selectinload(Lead.messages),
+            selectinload(Lead.comments),
+        )
+        .where(Lead.id == lead_id)
+    )
+    return result.scalar_one()
+
+
+@router.get("/{lead_id}/comments", response_model=List[LeadCommentResponse])
+async def list_comments(
+    lead_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(LeadComment)
+        .options(selectinload(LeadComment.author))
+        .where(LeadComment.lead_id == lead_id)
+        .order_by(LeadComment.created_at)
+    )
+    return result.scalars().all()
+
+
+@router.post(
+    "/{lead_id}/comments",
+    response_model=LeadCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_comment(
+    lead_id: UUID,
+    payload: LeadCommentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    exists = await db.get(Lead, lead_id)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+
+    comment = LeadComment(
+        lead_id=lead_id,
+        author_id=current_user.id,
+        text=payload.text,
+    )
+    db.add(comment)
+    await db.commit()
+
+    result = await db.execute(
+        select(LeadComment)
+        .options(selectinload(LeadComment.author))
+        .where(LeadComment.id == comment.id)
+    )
+    return result.scalar_one()
 
 
 @router.patch("/{lead_id}/assign")

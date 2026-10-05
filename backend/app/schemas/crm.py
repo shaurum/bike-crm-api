@@ -58,6 +58,29 @@ class LeadMessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LeadCommentCreate(BaseModel):
+    text: str
+
+
+class CommentAuthor(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LeadCommentResponse(BaseModel):
+    id: UUID
+    lead_id: UUID
+    author_id: Optional[UUID] = None
+    text: str
+    created_at: datetime
+    author: Optional[CommentAuthor] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LeadBase(BaseModel):
     source_id: UUID
     external_id: str
@@ -93,6 +116,18 @@ class LeadUpdate(BaseModel):
     assigned_to_id: Optional[UUID] = None
 
 
+class LeadDealUpdate(BaseModel):
+    """Поля сделки на карточке лида."""
+
+    customer_id: Optional[UUID] = None
+    bike_id: Optional[UUID] = None
+    amount: Optional[float] = None
+    deal_due_at: Optional[datetime] = None
+    rental_start_at: Optional[datetime] = None
+    rental_end_at: Optional[datetime] = None
+    initial_message: Optional[str] = None
+
+
 class LeadResponse(LeadBase):
     id: UUID
     created_at: datetime
@@ -100,6 +135,13 @@ class LeadResponse(LeadBase):
     source: Optional[LeadSourceResponse] = None
     stage: Optional[PipelineStageResponse] = None
     messages: List[LeadMessageResponse] = []
+    comments: List[LeadCommentResponse] = []
+    customer_id: Optional[UUID] = None
+    bike_id: Optional[UUID] = None
+    amount: Optional[float] = None
+    deal_due_at: Optional[datetime] = None
+    rental_start_at: Optional[datetime] = None
+    rental_end_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
