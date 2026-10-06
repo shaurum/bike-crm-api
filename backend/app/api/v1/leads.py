@@ -200,13 +200,24 @@ async def get_lead(
     return lead
 
 
+# Этапы, на которых сделка закрыта — байк возвращается в парковку
+TERMINAL_STAGES = {"Завершён", "Отказ"}
+
+
 async def ensure_bike_is_free(db: AsyncSession, bike_id: UUID, lead_id) -> None:
-    """Нельзя выдать байк, который уже занят другой сделкой."""
+    """Нельзя выдать байк, который уже занят другой незакрытой сделкой."""
+    stmt = select(Lead.id).where(Lead.bike_id == bike_id)
+    if lead_id is not None:
+        stmt = stmt.where(Lead.id != lead_id)
+
     taken = (
         await db.execute(
-            select(Lead.id).where(Lead.bike_id == bike_id, Lead.id != lead_id).limit(1)
+            stmt.join(PipelineStage, Lead.stage_id == PipelineStage.id).where(
+                PipelineStage.name.notin_(TERMINAL_STAGES)
+            )
         )
     ).scalars().first()
+
     if taken:
         raise HTTPException(
             status_code=409,
@@ -226,7 +237,12 @@ async def release_bike(db: AsyncSession, bike_id: UUID) -> None:
         return
 
     other = (
-        await db.execute(select(Lead.id).where(Lead.bike_id == bike_id).limit(1))
+        await db.execute(
+            select(Lead.id)
+            .join(PipelineStage, Lead.stage_id == PipelineStage.id)
+            .where(Lead.bike_id == bike_id, PipelineStage.name.notin_(TERMINAL_STAGES))
+            .limit(1)
+        )
     ).scalars().first()
     if other:
         return

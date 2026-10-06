@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -245,7 +245,6 @@ export function BikeDialog({
   const [model, setModel] = useState("");
   const [frameNumber, setFrameNumber] = useState("");
   const [color, setColor] = useState("");
-  const [year, setYear] = useState("");
   const [rangeKm, setRangeKm] = useState("");
   const [maxSpeed, setMaxSpeed] = useState("");
   const [battery, setBattery] = useState("");
@@ -264,7 +263,6 @@ export function BikeDialog({
     setModel(data.model ?? "");
     setFrameNumber(data.frame_number ?? "");
     setColor(data.color ?? "");
-    setYear(data.year != null ? String(data.year) : "");
     setRangeKm(data.range_km != null ? String(data.range_km) : "");
     setMaxSpeed(data.max_speed != null ? String(data.max_speed) : "");
     setBattery(data.battery_capacity != null ? String(data.battery_capacity) : "");
@@ -332,7 +330,6 @@ export function BikeDialog({
         model,
         frame_number: frameNumber || null,
         color: color || null,
-        year: numOrNull(year),
         range_km: numOrNull(rangeKm),
         max_speed: numOrNull(maxSpeed),
         battery_capacity: numOrNull(battery),
@@ -348,6 +345,7 @@ export function BikeDialog({
       });
       hydrate(res.data as BikeItem);
       onSaved();
+      onOpenChange(false);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось сохранить");
     } finally {
@@ -502,18 +500,6 @@ export function BikeDialog({
                     type="number"
                     value={battery}
                     onChange={(e) => setBattery(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="flex items-center gap-1.5 text-sm font-medium" htmlFor="b-year">
-                    Год
-                  </label>
-                  <Input
-                    id="b-year"
-                    type="number"
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
                   />
                 </div>
 

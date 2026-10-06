@@ -225,6 +225,7 @@ export function LeadDetailDialog({
       });
       hydrate(res.data as LeadDetail);
       onSaved();
+      onOpenChange(false);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось сохранить");
     } finally {

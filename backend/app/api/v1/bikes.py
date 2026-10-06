@@ -193,17 +193,24 @@ async def _active_booking(db: AsyncSession, bike_id: UUID):
 async def _with_rental_state(db: AsyncSession, bike):
     """Статус «в аренде» берём из CRM: активная бронь, а не ручной флаг."""
     from app.models import Lead
+    from app.api.v1.leads import TERMINAL_STAGES
 
     booking = await _active_booking(db, bike.id)
     bike.is_rented = booking is not None
     bike.active_booking_id = booking.id if booking else None
     bike.active_booking_status = booking.status.value if booking else None
 
+    # Байк считается занятым только если висит на незакрытой сделке.
+    # На «Завершён» и «Отказ» сделка закрыта — байк свободен для новых лидов.
     linked = (
         await db.execute(
-            select(Lead.id, Lead.stage_id).where(Lead.bike_id == bike.id).limit(1)
+            select(Lead.id, Lead.stage_id, PipelineStage.name)
+            .join(PipelineStage, Lead.stage_id == PipelineStage.id)
+            .where(Lead.bike_id == bike.id, PipelineStage.name.notin_(TERMINAL_STAGES))
+            .limit(1)
         )
     ).first()
+
     bike.linked_lead_id = linked[0] if linked else None
     bike.linked_stage_id = linked[1] if linked else None
 
