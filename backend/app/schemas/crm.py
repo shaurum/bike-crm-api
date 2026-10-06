@@ -114,11 +114,11 @@ class LeadManualCreate(BlankEmailMixin):
     """Ручное создание лида оператором."""
 
     source_id: UUID
+    customer_id: Optional[UUID] = None
     client_name: Optional[str] = None
     client_phone: Optional[str] = None
     client_email: Optional[EmailStr] = None
     bike_id: Optional[UUID] = None
-    assigned_to_id: Optional[UUID] = None
     initial_message: Optional[str] = None
     utm: dict = {}
 

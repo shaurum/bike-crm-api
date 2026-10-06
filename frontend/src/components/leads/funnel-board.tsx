@@ -42,7 +42,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { leadsApi, customersApi, usersApi } from "@/lib/api";
+import { leadsApi, customersApi } from "@/lib/api";
+import {
+  CustomerPicker,
+  type PickedCustomer,
+} from "@/components/customers/customer-picker";
 import { LeadDetailDialog } from "@/components/leads/lead-detail-dialog";
 import {
   ColumnVisibilityMenu,
@@ -66,7 +70,6 @@ interface Lead {
   status: string;
   stage_id: string | null;
   amount?: number | null;
-  assigned_to?: { full_name: string } | null;
   source?: { name: string; type: string } | null;
 }
 
@@ -74,13 +77,6 @@ interface Source {
   id: string;
   name: string;
   type: string;
-}
-
-interface UserBrief {
-  id: string;
-  full_name: string;
-  email: string;
-  role: string;
 }
 
 const NO_SOURCE = "__none__";
@@ -92,16 +88,14 @@ const NO_STAGE = "__none__";
 
 function AddLeadDialog({
   sources,
-  users,
   onCreated,
 }: {
   sources: Source[];
-  users: UserBrief[];
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [sourceId, setSourceId] = useState<string>(NO_SOURCE);
-  const [assigneeId, setAssigneeId] = useState<string>(NO_SOURCE);
+  const [customer, setCustomer] = useState<PickedCustomer | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -120,10 +114,10 @@ function AddLeadDialog({
     try {
       await leadsApi.create({
         source_id: sourceId,
-        client_name: name || undefined,
-        client_phone: phone || undefined,
-        client_email: email || undefined,
-        assigned_to_id: assigneeId === NO_SOURCE ? null : assigneeId,
+        customer_id: customer?.id ?? null,
+        client_name: customer?.full_name ?? name ?? undefined,
+        client_phone: customer?.phone ?? phone ?? undefined,
+        client_email: customer?.email ?? email ?? undefined,
         initial_message: message || undefined,
       });
       setOpen(false);
@@ -182,22 +176,13 @@ function AddLeadDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="lead-assignee">
-              Ответственный менеджер
+            <label className="text-sm font-medium" htmlFor="lead-customer">
+              Клиент
             </label>
-            <Select value={assigneeId} onValueChange={setAssigneeId}>
-              <SelectTrigger id="lead-assignee">
-                <SelectValue placeholder="Я" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_SOURCE}>Я</SelectItem>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CustomerPicker value={customer} onChange={setCustomer} autoFocus />
+            <p className="text-xs text-muted-foreground">
+              Если клиента нет в базе — создайте его прямо отсюда
+            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -314,11 +299,7 @@ function LeadCardBody({ lead }: { lead: Lead }) {
         )}
       </div>
 
-      {lead.assigned_to?.full_name && (
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {lead.assigned_to.full_name}
-        </p>
-      )}
+      
       <LeadMeta lead={lead} />
     </>
   );
@@ -606,7 +587,6 @@ function MobileStageList({
 export function FunnelBoard() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
-  const [users, setUsers] = useState<UserBrief[]>([]);
   const [columns, setColumns] = useState<Record<string, Lead[]>>({});
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -646,18 +626,16 @@ export function FunnelBoard() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const [stagesRes, sourcesRes, leadsRes, usersRes] = await Promise.all([
+      const [stagesRes, sourcesRes, leadsRes] = await Promise.all([
         leadsApi.stages(),
         leadsApi.sources(),
         leadsApi.list({ size: 100 }),
-        usersApi.list(),
       ]);
       const loadedStages = stagesRes.data as Stage[];
       const loadedLeads = (leadsRes.data?.items ?? []) as Lead[];
 
       setStages(loadedStages);
       setSources(sourcesRes.data as Source[]);
-      setUsers(usersRes.data as UserBrief[]);
       setLeads(loadedLeads);
       setColumns(group(loadedLeads));
     } catch (err: any) {
@@ -849,7 +827,7 @@ export function FunnelBoard() {
             <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
             Обновить
           </Button>
-          <AddLeadDialog sources={sources} users={users} onCreated={load} />
+          <AddLeadDialog sources={sources} onCreated={load} />
         </div>
       </div>
 

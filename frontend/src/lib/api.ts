@@ -108,11 +108,11 @@ export const leadsApi = {
   get: (id: string) => api.get(`/leads/${id}`),
   create: (data: {
     source_id: string;
+    customer_id?: string | null;
     client_name?: string;
     client_phone?: string;
     client_email?: string;
     bike_id?: string | null;
-    assigned_to_id?: string | null;
     initial_message?: string;
   }) => api.post("/leads", data),
   assign: (id: string, user_id: string) => api.patch(`/leads/${id}/assign`, null, { params: { user_id } }),

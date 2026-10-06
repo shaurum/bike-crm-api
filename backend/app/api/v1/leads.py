@@ -136,20 +136,23 @@ async def create_lead(
     if payload.bike_id:
         await ensure_bike_is_free(db, payload.bike_id, None)
 
-    # Ответственный: явно выбранный или автор лида
-    assignee_id = payload.assigned_to_id or current_user.id
-    assignee = await db.get(User, assignee_id)
-    if not assignee or not assignee.is_active:
-        raise HTTPException(status_code=404, detail="Менеджер не найден")
+    # Если выбран существующий клиент — подтягиваем его контакты
+    customer = None
+    if payload.customer_id:
+        from app.models import Customer
+
+        customer = await db.get(Customer, payload.customer_id)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Клиент не найден")
 
     lead = Lead(
         source_id=source.id,
         external_id=f"manual-{uuid4().hex[:8]}",
-        client_name=payload.client_name,
-        client_phone=payload.client_phone,
-        client_email=payload.client_email,
+        customer_id=customer.id if customer else None,
+        client_name=(customer.full_name if customer else None) or payload.client_name,
+        client_phone=(customer.phone if customer else None) or payload.client_phone,
+        client_email=(customer.email if customer else None) or payload.client_email,
         bike_id=payload.bike_id,
-        assigned_to_id=assignee_id,
         initial_message=payload.initial_message,
         utm=payload.utm or {},
         status=LeadStatus.NEW,
@@ -377,19 +380,8 @@ async def assign_lead(
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
-
-    # Админ назначает кого угодно, менеджер — только себя или свою сделку
-    if (
-        current_user.role != UserRole.ADMIN
-        and user_id != current_user.id
-        and lead.assigned_to_id != current_user.id
-    ):
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Только админ может назначать")
-
-    assignee = await db.get(User, user_id)
-    if not assignee or not assignee.is_active:
-        raise HTTPException(status_code=404, detail="Менеджер не найден")
-
     lead.assigned_to_id = user_id
     await db.commit()
     return {"message": "Лид назначен"}

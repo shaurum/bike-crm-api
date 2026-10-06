@@ -31,6 +31,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { leadsApi, customersApi, bikesApi } from "@/lib/api";
+import {
+  CustomerPicker,
+  type PickedCustomer,
+} from "@/components/customers/customer-picker";
 import { formatCurrency } from "@/lib/utils";
 
 interface Stage {
@@ -72,6 +76,7 @@ interface CustomerOption {
   id: string;
   full_name: string;
   phone: string | null;
+  email: string | null;
 }
 
 interface BikeOption {
@@ -317,21 +322,29 @@ export function LeadDetailDialog({
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Клиент" icon={User} hint="Привязать существующего клиента">
-                <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Не выбран" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Не выбран</SelectItem>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.full_name}
-                        {c.phone ? ` · ${c.phone}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <Field label="Клиент" icon={User}>
+                <CustomerPicker
+                  value={
+                    customerId === NONE
+                      ? null
+                      : {
+                          id: customerId,
+                          full_name:
+                            lead.client_name ??
+                            customers.find((c) => c.id === customerId)?.full_name ??
+                            "Клиент",
+                          phone:
+                            lead.client_phone ??
+                            customers.find((c) => c.id === customerId)?.phone ??
+                            "",
+                          email:
+                            lead.client_email ??
+                            customers.find((c) => c.id === customerId)?.email ??
+                            null,
+                        }
+                  }
+                  onChange={(c) => setCustomerId(c?.id ?? NONE)}
+                />
               </Field>
 
               <Field
