@@ -187,18 +187,31 @@ export function LeadDetailDialog({
     setLoading(true);
     setError("");
     try {
-      const [leadRes, srcRes, custRes, bikesRes] = await Promise.all([
-        leadsApi.get(leadId),
+      const leadRes = await leadsApi.get(leadId);
+      hydrate(leadRes.data as LeadDetail);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setError(
+        typeof detail === "string" && detail
+          ? detail
+          : "Не удалось загрузить лид"
+      );
+      setLoading(false);
+      return;
+    }
+    // Справочники (клиенты, байки, источники) грузим отдельно:
+    // падение одного из них не должно скрывать саму сделку
+    try {
+      const [srcRes, custRes, bikesRes] = await Promise.all([
         leadsApi.sources(),
         customersApi.list({ size: 100 }),
         bikesApi.list({ size: 100 }),
       ]);
-      hydrate(leadRes.data as LeadDetail);
       setSources(srcRes.data as Source[]);
       setCustomers(custRes.data?.items ?? []);
       setBikes(bikesRes.data?.items ?? []);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить лид");
+    } catch {
+      // Подтянется при следующем открытии — сделку это не ломает
     } finally {
       setLoading(false);
     }

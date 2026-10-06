@@ -213,7 +213,8 @@ class CustomerDocumentResponse(BaseModel):
 
 class CustomerBase(BaseModel):
     full_name: str
-    phone: str
+    # Клиент может прийти только из письма — тогда телефона нет
+    phone: Optional[str] = None
     email: Optional[EmailStr] = None
     document_type: CustomerDocumentType = CustomerDocumentType.PASSPORT_RF
     country: str = "Россия"

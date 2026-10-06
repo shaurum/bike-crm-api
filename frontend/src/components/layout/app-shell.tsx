@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Bike, LogOut, Menu, User as UserIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useAuthStore, useAuthReady } from "@/lib/store";
-import { authApi } from "@/lib/api";
+import { api, authApi } from "@/lib/api";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { cn } from "@/lib/utils";
 
@@ -17,14 +18,33 @@ function isActiveRoute(href: string, pathname: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Сколько непрочитанных сообщений по всем диалогам. */
+function useUnreadTotal() {
+  const { data } = useQuery({
+    queryKey: ["conversations", "unread-total"],
+    queryFn: async () => {
+      const { data } = await api.get<
+        { unread_count?: number }[]
+      >("/conversations");
+      return data;
+    },
+    refetchInterval: 30000,
+    retry: false,
+  });
+  if (!Array.isArray(data)) return 0;
+  return data.reduce((sum, item) => sum + (item.unread_count || 0), 0);
+}
+
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const unread = useUnreadTotal();
 
   return (
     <nav className="flex flex-col gap-1">
       {NAV_ITEMS.map((item) => {
         const active = isActiveRoute(item.href, pathname);
         const Icon = item.icon;
+        const showBadge = item.href === "/messages" && unread > 0;
 
         return (
           <Link
@@ -41,6 +61,11 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden />
             <span className="truncate">{item.label}</span>
+            {showBadge && (
+              <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white">
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
           </Link>
         );
       })}

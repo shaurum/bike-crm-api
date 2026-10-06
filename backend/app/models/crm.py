@@ -153,7 +153,14 @@ class Lead(UUIDMixin, TimestampMixin, Base):
 
     source: Mapped["LeadSource"] = relationship(back_populates="leads", lazy="selectin")
     stage: Mapped[Optional["PipelineStage"]] = relationship(back_populates="leads", lazy="selectin")
-    messages: Mapped[List["LeadMessage"]] = relationship(back_populates="lead", lazy="selectin", cascade="all, delete-orphan")
+    # История переписки живёт в чате и должна переживать удаление сделки.
+    # Раньше здесь стоял cascade="all, delete-orphan": SQLAlchemy удалял
+    # сообщения в Python раньше, чем успевал сработать ON DELETE SET NULL.
+    messages: Mapped[List["LeadMessage"]] = relationship(
+        back_populates="lead",
+        lazy="selectin",
+        passive_deletes=True,
+    )
     tasks: Mapped[List["Task"]] = relationship(back_populates="lead", lazy="selectin")
     assigned_to: Mapped[Optional["User"]] = relationship(back_populates="assigned_leads", lazy="selectin")
     customer: Mapped[Optional["Customer"]] = relationship(lazy="selectin")
@@ -210,7 +217,7 @@ class LeadMessage(UUIDMixin, TimestampMixin, Base):
     )
     meta: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Extra data")
 
-    lead: Mapped["Lead"] = relationship(back_populates="messages", lazy="noload")
+    lead: Mapped[Optional["Lead"]] = relationship(back_populates="messages", lazy="noload")
 
     __table_args__ = (
         Index("ix_lead_message_lead_created", "lead_id", "created_at"),

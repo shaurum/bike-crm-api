@@ -556,6 +556,12 @@ export function FunnelBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Ссылка вида /orders?lead=<id> — так из сообщений открываются в карточку
+  useEffect(() => {
+    const lead = new URLSearchParams(window.location.search).get("lead");
+    if (lead) setSelectedLeadId(lead);
+  }, []);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
@@ -854,7 +860,14 @@ export function FunnelBoard() {
         leadId={selectedLeadId}
         open={selectedLeadId !== null}
         onOpenChange={(v) => {
-          if (!v) setSelectedLeadId(null);
+          if (!v) {
+            setSelectedLeadId(null);
+            const url = new URL(window.location.href);
+            if (url.searchParams.has("lead")) {
+              url.searchParams.delete("lead");
+              window.history.replaceState({}, "", url.toString());
+            }
+          }
         }}
         stages={stages}
         onSaved={load}

@@ -35,7 +35,8 @@ celery_app.conf.update(
         },
         "poll-email-inbox": {
             "task": "app.tasks.webhooks.poll_email_inbox",
-            "schedule": 60.0,
+            # Чем чаще смотрим ящик, тем быстрее письмо доходит до чата
+            "schedule": 20.0,
         },
         "daily-backup": {
             "task": "app.tasks.maintenance.daily_backup",

@@ -10,7 +10,7 @@ import {
   Unlock,
   User,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
 import { api } from "@/lib/api";
@@ -156,12 +156,21 @@ function ConversationList({
           key={item.id}
           onClick={() => onSelect(item.id)}
           className={cn(
-            "block w-full px-4 py-3 text-left transition-colors hover:bg-muted/50",
-            selectedId === item.id && "bg-muted"
+            "block w-full border-l-2 px-4 py-3 text-left transition-colors hover:bg-muted/50",
+            selectedId === item.id
+              ? "border-primary bg-muted"
+              : item.unread_count > 0
+                ? "border-primary bg-primary/5"
+                : "border-transparent"
           )}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-medium">
+            <span
+              className={cn(
+                "truncate text-sm",
+                item.unread_count > 0 ? "font-semibold" : "font-medium"
+              )}
+            >
               {item.customer_name}
             </span>
             <span className="shrink-0 text-[11px] text-muted-foreground">
@@ -179,11 +188,18 @@ function ConversationList({
           </div>
 
           <div className="mt-1 flex items-start justify-between gap-2">
-            <p className="line-clamp-2 text-xs text-muted-foreground">
+            <p
+              className={cn(
+                "line-clamp-2 text-xs",
+                item.unread_count > 0
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground"
+              )}
+            >
               {item.preview || "Нет сообщений"}
             </p>
             {item.unread_count > 0 && (
-              <span className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground">
+              <span className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground ring-2 ring-background">
                 {item.unread_count}
               </span>
             )}
@@ -384,34 +400,61 @@ function Thread({
           </p>
         )}
 
-        {conversation.messages.map((message) => {
+        {conversation.messages.map((message, index) => {
           const outbound = message.direction === "outbound";
+          const unread = !outbound && !message.is_read;
+          const prev = index > 0 ? conversation.messages[index - 1] : null;
+          const prevUnread = Boolean(
+            prev && prev.direction === "inbound" && !prev.is_read
+          );
           return (
-            <div
-              key={message.id}
-              className={cn("flex", outbound ? "justify-end" : "justify-start")}
-            >
+            <Fragment key={message.id}>
+              {unread && !prevUnread && (
+                <div className="flex items-center gap-2 text-[11px] font-medium text-primary">
+                  <span className="h-px flex-1 bg-primary/30" />
+                  <span>Новые сообщения</span>
+                  <span className="h-px flex-1 bg-primary/30" />
+                </div>
+              )}
               <div
                 className={cn(
-                  "max-w-[80%] rounded-lg px-3 py-2",
-                  outbound ? "bg-primary text-primary-foreground" : "bg-muted"
+                  "flex",
+                  outbound ? "justify-end" : "justify-start"
                 )}
               >
-                {message.subject && (
-                  <p className="mb-1 text-[11px] opacity-70">
-                    {message.subject}
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg px-3 py-2",
+                    outbound
+                      ? "bg-primary text-primary-foreground"
+                      : unread
+                        ? "bg-background ring-2 ring-primary/40"
+                        : "bg-muted"
+                  )}
+                >
+                  {message.subject && (
+                    <p className="mb-1 text-[11px] opacity-70">
+                      {message.subject}
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {message.content}
                   </p>
-                )}
-                <p className="whitespace-pre-wrap break-words text-sm">
-                  {message.content}
-                </p>
-                <div className="mt-1 flex items-center gap-2 text-[10px] opacity-70">
-                  <span>{formatTime(message.created_at)}</span>
-                  <span>{CHANNEL_LABELS[message.channel] || message.channel}</span>
-                  {outbound && message.author_name && <span>{message.author_name}</span>}
+                  <div className="mt-1 flex items-center gap-2 text-[10px] opacity-70">
+                    <span>{formatTime(message.created_at)}</span>
+                    <span>
+                      {CHANNEL_LABELS[message.channel] || message.channel}
+                    </span>
+                    {outbound && message.author_name && (
+                      <span>{message.author_name}</span>
+                    )}
+                    {unread && (
+                      <span className="font-medium">не прочитано</span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Fragment>
           );
         })}
 
@@ -482,6 +525,8 @@ export default function MessagesPage() {
       return data;
     },
     enabled: Boolean(selectedId),
+    // Пока диалог открыт, новые сообщения должны появляться сами
+    refetchInterval: 10000,
   });
 
   const read = useMutation({
@@ -509,6 +554,16 @@ export default function MessagesPage() {
     if (selectedId) read.mutate(selectedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  // Пока диалог открыт, входящие помечаем прочитанными — счётчик гаснет
+  useEffect(() => {
+    if (!conversation) return;
+    const hasUnread = conversation.messages.some(
+      (m) => m.direction === "inbound" && !m.is_read
+    );
+    if (hasUnread && !read.isPending) read.mutate(conversation.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.messages]);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-4">
