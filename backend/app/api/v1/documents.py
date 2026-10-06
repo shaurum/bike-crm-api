@@ -283,6 +283,103 @@ async def change_status(
     return result.scalar_one()
 
 
+@router.post("/{document_id}/signed", response_model=DocumentResponse)
+async def attach_signed_scan(
+    document_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Прикладывает подписанный скан к документу."""
+    from datetime import datetime, timezone
+
+    document = await db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    ext = ALLOWED_DOC_TYPES.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(
+            status_code=415, detail="Поддерживаются JPG, PNG, WEBP и PDF"
+        )
+
+    payload = await file.read()
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if len(payload) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"Файл больше {settings.MAX_UPLOAD_MB} МБ"
+        )
+
+    # Заменяем предыдущий скан, чтобы не плодить файлы
+    if document.signed_file_url:
+        old = os.path.join(settings.UPLOAD_DIR, os.path.basename(document.signed_file_url))
+        if os.path.exists(old):
+            os.remove(old)
+
+    from uuid import uuid4
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    filename = f"signed-{document.id}-{uuid4().hex[:8]}{ext}"
+    with open(os.path.join(settings.UPLOAD_DIR, filename), "wb") as fh:
+        fh.write(payload)
+
+    document.signed_file_url = f"/uploads/{filename}"
+    document.signed_original_name = file.filename
+    document.signed_at = datetime.now(timezone.utc)
+    document.signed_size = len(payload)
+
+    if document.status == DocumentStatus.DRAFT:
+        document.status = DocumentStatus.ISSUED
+    if document.status == DocumentStatus.ISSUED:
+        document.status = DocumentStatus.SIGNED
+
+    await db.commit()
+
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.customer), selectinload(Document.bike))
+        .where(Document.id == document.id)
+    )
+    doc = result.scalar_one()
+    doc.bike_name = doc.bike.model if doc.bike else None
+    return doc
+
+
+@router.delete("/{document_id}/signed", response_model=DocumentResponse)
+async def detach_signed_scan(
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = await db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    if document.signed_file_url:
+        path = os.path.join(
+            settings.UPLOAD_DIR, os.path.basename(document.signed_file_url)
+        )
+        if os.path.exists(path):
+            os.remove(path)
+
+    document.signed_file_url = None
+    document.signed_original_name = None
+    document.signed_at = None
+    document.signed_size = None
+    document.status = DocumentStatus.ISSUED
+
+    await db.commit()
+
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.customer), selectinload(Document.bike))
+        .where(Document.id == document.id)
+    )
+    doc = result.scalar_one()
+    doc.bike_name = doc.bike.model if doc.bike else None
+    return doc
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: UUID,
@@ -293,12 +390,11 @@ async def delete_document(
     if not document:
         raise HTTPException(status_code=404, detail="Документ не найден")
 
-    if document.file_url:
-        path = os.path.join(
-            settings.UPLOAD_DIR, os.path.basename(document.file_url)
-        )
-        if os.path.exists(path):
-            os.remove(path)
+    for url in (document.file_url, document.signed_file_url):
+        if url:
+            path = os.path.join(settings.UPLOAD_DIR, os.path.basename(url))
+            if os.path.exists(path):
+                os.remove(path)
 
     await db.delete(document)
     await db.commit()

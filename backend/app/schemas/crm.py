@@ -271,6 +271,10 @@ class DocumentResponse(BaseModel):
     file_url: Optional[str] = None
     original_name: Optional[str] = None
     size: Optional[int] = None
+    signed_file_url: Optional[str] = None
+    signed_original_name: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    signed_size: Optional[int] = None
     payload: dict = {}
     created_at: datetime
     customer: Optional[DocumentCustomerBrief] = None

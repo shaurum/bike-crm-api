@@ -330,6 +330,14 @@ class Document(UUIDMixin, TimestampMixin, Base):
     file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    signed_file_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True, comment="Подписанный скан"
+    )
+    signed_original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    signed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Когда приложен скан"
+    )
+    signed_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     payload: Mapped[dict] = mapped_column(
         JSON, default={}, nullable=False, comment="Данные на момент формирования"
     )
