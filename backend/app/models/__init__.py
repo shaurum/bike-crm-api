@@ -17,6 +17,7 @@ from app.models.crm import (
     DocumentStatus,
     CompanyProfile,
 )
+from app.models.integration import IntegrationSetting
 from app.models.rental import (
     Branch,
     Bike,
@@ -52,7 +53,8 @@ __all__ = [
     "Document",
     "DocumentKind",
     "DocumentStatus",
-    "CompanyProfile",
+"CompanyProfile",
+    "IntegrationSetting",
     "Branch",
     "Bike",
     "BikeStatus",

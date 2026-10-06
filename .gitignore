@@ -50,3 +50,5 @@ nginx/ssl/
 tmp/
 temp/
 *.tsbuildinfo
+celerybeat-schedule
+celerybeat-schedule.db

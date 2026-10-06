@@ -164,6 +164,21 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class UserProfileUpdate(BaseModel):
+    """Правка собственного профиля. Email и роль меняет администратор."""
+
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    """Смена собственного пароля."""
+
+    current_password: str
+    new_password: str
+
+
 class UserResponse(UserBase):
     id: UUID
     is_active: bool

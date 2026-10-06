@@ -5,6 +5,7 @@ import {
   Bike,
   FileText,
   ListChecks,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,4 +22,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/parking", label: "Парковка", icon: Bike },
   { href: "/documents", label: "Документы", icon: FileText },
   { href: "/tasks", label: "Задачи", icon: ListChecks },
+  { href: "/settings", label: "Настройки", icon: Settings },
 ];

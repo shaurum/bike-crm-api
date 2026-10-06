@@ -25,3 +25,4 @@ pytest-cov==5.0.0
 ruff==0.4.8
 mypy==1.10.0
 types-redis==5.0.1
+aiosmtplib==3.0.1
