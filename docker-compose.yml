@@ -114,6 +114,9 @@ services:
     volumes:
       - ./backend:/app
       - ./data/uploads:/app/uploads
+    healthcheck:
+      # В Dockerfile проверка идёт на HTTP :8000/health, а celery его не поднимает
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,6 +144,9 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     volumes:
       - ./backend:/app
+    healthcheck:
+      # В Dockerfile проверка идёт на HTTP :8000/health, а celery его не поднимает
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy

@@ -160,7 +160,7 @@ class Customer(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "customer"
 
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="ФИО")
-    phone: Mapped[str] = mapped_column(String(50), nullable=False, comment="Телефон")
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Телефон")
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Email")
     passport_series: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="Серия паспорта")
     passport_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="Номер паспорта")

@@ -1,6 +1,7 @@
 import logging
 import httpx
 from celery import shared_task
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, and_
@@ -11,7 +12,9 @@ from app.models import Task, TaskStatus, User, Booking, BookingStatus, Bike, Bik
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine = create_async_engine(
+        settings.DATABASE_URL, poolclass=NullPool
+    )
 async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

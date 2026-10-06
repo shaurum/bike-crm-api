@@ -163,10 +163,25 @@ async def get_email_settings(
             from_email=config.get("from_email") or None,
             from_name=config.get("from_name") or None,
             use_tls=bool(config.get("use_tls", True)),
+            imap_host=config.get("imap_host") or None,
+            imap_port=int(config.get("imap_port") or 993),
+            imap_username=config.get("imap_username") or None,
+            imap_use_ssl=bool(config.get("imap_use_ssl", True)),
+            imap_folder=config.get("imap_folder") or "INBOX",
         ),
         password_set=bool(secret.get("password")),
         api_key_set=bool(secret.get("api_key")),
+        imap_password_set=bool(secret.get("imap_password")),
         from_env=not item.is_enabled,
+        imap_ready=bool(
+            item.is_enabled
+            and config.get("imap_host")
+            and (config.get("imap_username") or config.get("from_email"))
+            and (
+                secret.get("imap_password")
+                or config.get("imap_username") == config.get("from_email")
+            )
+        ),
         updated_at=item.updated_at,
     )
 
@@ -190,13 +205,11 @@ async def update_email_settings(
     incoming = payload.config.model_dump()
 
     # Секреты меняем только если реально пришли непустыми
-    for field in ("password", "api_key"):
+    for field in ("password", "api_key", "imap_password"):
         value = getattr(payload, field)
         if value:
             secret[field] = value
 
-    if "password" in incoming:
-        incoming.pop("password", None)
     config.update(incoming)
 
     item.config = config

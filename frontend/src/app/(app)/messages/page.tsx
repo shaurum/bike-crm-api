@@ -1,0 +1,679 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  Lock,
+  Plus,
+  Search,
+  Send,
+  Unlock,
+  User,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "@/hooks/use-toast";
+
+import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+interface ConversationItem {
+  id: string;
+  status: string;
+  last_message_at: string | null;
+  unread_count: number;
+  customer_id: string;
+  customer_name: string;
+  lead_id: string | null;
+  deal_state: "active" | "deal_closed" | "none";
+  preview: string | null;
+  channel: string | null;
+  contacts: string[];
+}
+
+interface ContactPoint {
+  id: string;
+  channel: string;
+  value: string;
+  label: string | null;
+  is_primary: boolean;
+  is_verified: boolean;
+}
+
+interface MessageItem {
+  id: string;
+  channel: string;
+  direction: string;
+  content: string;
+  is_read: boolean;
+  author_name: string | null;
+  subject: string | null;
+  created_at: string;
+}
+
+interface ConversationDetail {
+  id: string;
+  status: string;
+  unread_count: number;
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_email: string | null;
+  lead_id: string | null;
+  deal_state: "active" | "deal_closed" | "none";
+  contacts: ContactPoint[];
+  messages: MessageItem[];
+  channels: string[];
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  email: "Почта",
+  telegram: "Telegram",
+  vk: "ВКонтакте",
+  avito: "Авито",
+  whatsapp: "WhatsApp",
+  phone: "Телефон",
+  internal: "Внутренняя заметка",
+};
+
+const DEAL_LABELS: Record<string, string> = {
+  active: "В аренде",
+  deal_closed: "Сделки нет",
+  none: "Нет сделки",
+};
+
+function formatTime(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function DealBadge({ state }: { state: string }) {
+  if (state === "active") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+        {DEAL_LABELS.active}
+      </span>
+    );
+  }
+  if (state === "deal_closed") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+        {DEAL_LABELS.deal_closed}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+      {DEAL_LABELS.none}
+    </span>
+  );
+}
+
+/* ---------- Список диалогов ---------- */
+
+function ConversationList({
+  search,
+  filter,
+  selectedId,
+  onSelect,
+}: {
+  search: string;
+  filter: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["conversations", search, filter],
+    queryFn: async () => {
+      const { data } = await api.get<ConversationItem[]>("/conversations", {
+        params: { search: search || undefined, status_filter: filter },
+      });
+      return data;
+    },
+    refetchInterval: 15000,
+  });
+
+  if (isLoading) {
+    return <p className="p-4 text-sm text-muted-foreground">Загрузка…</p>;
+  }
+  if (!data || data.length === 0) {
+    return (
+      <p className="p-6 text-center text-sm text-muted-foreground">
+        {search || filter !== "all" ? "Ничего не найдено" : "Сообщений пока нет"}
+      </p>
+    );
+  }
+
+  return (
+    <div className="divide-y">
+      {data.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => onSelect(item.id)}
+          className={cn(
+            "block w-full px-4 py-3 text-left transition-colors hover:bg-muted/50",
+            selectedId === item.id && "bg-muted"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium">
+              {item.customer_name}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {formatTime(item.last_message_at)}
+            </span>
+          </div>
+
+          <div className="mt-1 flex items-center gap-1.5">
+            <DealBadge state={item.deal_state} />
+            {item.channel && (
+              <span className="text-[11px] text-muted-foreground">
+                {CHANNEL_LABELS[item.channel] || item.channel}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-1 flex items-start justify-between gap-2">
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {item.preview || "Нет сообщений"}
+            </p>
+            {item.unread_count > 0 && (
+              <span className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground">
+                {item.unread_count}
+              </span>
+            )}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Контакты клиента ---------- */
+
+function ContactsPanel({
+  customerId,
+  contacts,
+}: {
+  customerId: string;
+  contacts: ContactPoint[];
+}) {
+  const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [channel, setChannel] = useState("email");
+  const [value, setValue] = useState("");
+  const [label, setLabel] = useState("");
+
+  const add = useMutation({
+    mutationFn: async () => {
+      await api.post(`/conversations/contacts/${customerId}`, {
+        channel,
+        value,
+        label: label || null,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Контакт добавлен" });
+      setAdding(false);
+      setValue("");
+      setLabel("");
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      toast({
+        title: "Не удалось добавить",
+        description: error.response?.data?.detail || "Ошибка сохранения",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase text-muted-foreground">
+          Способы связи
+        </p>
+        <button
+          onClick={() => setAdding((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Plus className="h-3 w-3" />
+          Добавить
+        </button>
+      </div>
+
+      <ul className="space-y-1.5">
+        {contacts.map((contact) => (
+          <li
+            key={contact.id}
+            className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">{contact.value}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {CHANNEL_LABELS[contact.channel] || contact.channel}
+                {contact.label ? ` · ${contact.label}` : ""}
+              </p>
+            </div>
+            {contact.is_primary && (
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                основной
+              </span>
+            )}
+          </li>
+        ))}
+        {contacts.length === 0 && (
+          <li className="text-xs text-muted-foreground">Контактов нет</li>
+        )}
+      </ul>
+
+      {adding && (
+        <div className="space-y-2 rounded-md border p-2">
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="email">Почта</option>
+            <option value="phone">Телефон</option>
+            <option value="telegram">Telegram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="vk">ВКонтакте</option>
+            <option value="avito">Авито</option>
+          </select>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={channel === "email" ? "mail@example.com" : "+79001234567"}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+          />
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Подпись (необязательно)"
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => add.mutate()}
+              disabled={!value || add.isPending}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
+            >
+              {add.isPending ? "…" : "Сохранить"}
+            </button>
+            <button
+              onClick={() => setAdding(false)}
+              className="rounded-md border px-3 py-1.5 text-xs"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Лента сообщений ---------- */
+
+function Thread({
+  conversation,
+}: {
+  conversation: ConversationDetail;
+}) {
+  const queryClient = useQueryClient();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [text, setText] = useState("");
+  const [channel, setChannel] = useState<string>("");
+
+  const sendable = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ContactPoint[] = [];
+    for (const contact of conversation.contacts) {
+      if (seen.has(contact.channel)) continue;
+      seen.add(contact.channel);
+      out.push(contact);
+    }
+    return out;
+  }, [conversation.contacts]);
+
+  useEffect(() => {
+    if (sendable.length > 0 && !channel) {
+      const primary = sendable.find((c) => c.is_primary) || sendable[0];
+      setChannel(primary.channel);
+    }
+  }, [sendable, channel]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation.messages.length]);
+
+  const send = useMutation({
+    mutationFn: async () => {
+      await api.post(`/conversations/${conversation.id}/messages`, {
+        channel,
+        content: text,
+      });
+    },
+    onSuccess: () => {
+      setText("");
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation", conversation.id] });
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      toast({
+        title: "Не удалось отправить",
+        description: error.response?.data?.detail || "Ошибка отправки",
+      });
+    },
+  });
+
+  const canSend = Boolean(text.trim()) && Boolean(channel) && !send.isPending;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        {conversation.messages.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground">
+            Сообщений пока нет
+          </p>
+        )}
+
+        {conversation.messages.map((message) => {
+          const outbound = message.direction === "outbound";
+          return (
+            <div
+              key={message.id}
+              className={cn("flex", outbound ? "justify-end" : "justify-start")}
+            >
+              <div
+                className={cn(
+                  "max-w-[80%] rounded-lg px-3 py-2",
+                  outbound ? "bg-primary text-primary-foreground" : "bg-muted"
+                )}
+              >
+                {message.subject && (
+                  <p className="mb-1 text-[11px] opacity-70">
+                    {message.subject}
+                  </p>
+                )}
+                <p className="whitespace-pre-wrap break-words text-sm">
+                  {message.content}
+                </p>
+                <div className="mt-1 flex items-center gap-2 text-[10px] opacity-70">
+                  <span>{formatTime(message.created_at)}</span>
+                  <span>{CHANNEL_LABELS[message.channel] || message.channel}</span>
+                  {outbound && message.author_name && <span>{message.author_name}</span>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        <div ref={bottomRef} />
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSend) send.mutate();
+        }}
+        className="border-t p-3"
+      >
+        <div className="flex gap-2">
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            className="w-36 shrink-0 rounded-md border bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            title="Куда отправлять"
+          >
+            {sendable.length === 0 && <option value="">Нет контактов</option>}
+            {sendable.map((contact) => (
+              <option key={contact.channel} value={contact.channel}>
+                {CHANNEL_LABELS[contact.channel] || contact.channel}
+              </option>
+            ))}
+          </select>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Написать сообщение…"
+            className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            disabled={!canSend}
+            className="shrink-0 rounded-md bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
+            title="Отправить"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+        {sendable.length === 0 && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Добавьте контакт клиента, чтобы отправлять сообщения
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}
+
+/* ---------- Страница ---------- */
+
+export default function MessagesPage() {
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [showContacts, setShowContacts] = useState(false);
+
+  const { data: conversation } = useQuery({
+    queryKey: ["conversation", selectedId],
+    queryFn: async () => {
+      const { data } = await api.get<ConversationDetail>(
+        `/conversations/${selectedId}`
+      );
+      return data;
+    },
+    enabled: Boolean(selectedId),
+  });
+
+  const read = useMutation({
+    mutationFn: async (id: string) => {
+      await api.post(`/conversations/${id}/read`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+
+  const toggleStatus = useMutation({
+    mutationFn: async (id: string) => {
+      const next = conversation?.status === "closed" ? "open" : "close";
+      await api.post(`/conversations/${id}/${next === "open" ? "open" : "close"}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+
+  useEffect(() => {
+    if (selectedId) read.mutate(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  return (
+    <div className="flex h-[calc(100vh-7rem)] gap-4">
+      <aside
+        className={cn(
+          "flex w-full flex-col rounded-lg border md:w-80",
+          selectedId && "hidden md:flex"
+        )}
+      >
+        <div className="space-y-2 border-b p-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по имени или контакту"
+              className="w-full rounded-md border bg-background py-2 pl-8 pr-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="flex gap-1">
+            {[
+              { key: "all", label: "Все" },
+              { key: "active", label: "В аренде" },
+              { key: "closed", label: "Без сделки" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setFilter(item.key)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium",
+                  filter === item.key
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ConversationList
+            search={search}
+            filter={filter}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </div>
+      </aside>
+
+      <section
+        className={cn(
+          "min-w-0 flex-1 rounded-lg border",
+          !selectedId && "hidden md:flex md:items-center md:justify-center"
+        )}
+      >
+        {!selectedId && (
+          <p className="text-sm text-muted-foreground">
+            Выберите диалог слева
+          </p>
+        )}
+
+        {selectedId && conversation && (
+          <div className="flex h-full min-h-0 w-full flex-col">
+            <header className="flex items-start justify-between gap-3 border-b px-4 py-3 pr-11">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="md:hidden"
+                    title="Назад"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <h2 className="truncate text-sm font-semibold">
+                    {conversation.customer_name}
+                  </h2>
+                  <DealBadge state={conversation.deal_state} />
+                  {conversation.status === "closed" && (
+                    <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      <Lock className="h-3 w-3" />
+                      закрыт
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  {conversation.customer_phone && <span>{conversation.customer_phone}</span>}
+                  {conversation.customer_email && <span>{conversation.customer_email}</span>}
+                  {conversation.lead_id && (
+                    <a
+                      href={`/orders?lead=${conversation.lead_id}`}
+                      className="text-primary hover:underline"
+                    >
+                      Открыть сделку
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setShowContacts((v) => !v)}
+                  className="rounded-md border px-2 py-1 text-xs"
+                  title="Контакты клиента"
+                >
+                  <User className="inline h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => toggleStatus.mutate(conversation.id)}
+                  className="rounded-md border px-2 py-1 text-xs"
+                  title={
+                    conversation.status === "closed"
+                      ? "Открыть чат"
+                      : "Закрыть чат"
+                  }
+                >
+                  {conversation.status === "closed" ? (
+                    <Unlock className="inline h-3.5 w-3.5" />
+                  ) : (
+                    <Lock className="inline h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </header>
+
+            <div className="grid min-h-0 flex-1 md:grid-cols-[1fr_16rem]">
+              <div className="min-h-0 overflow-hidden">
+                <Thread conversation={conversation} />
+              </div>
+
+              <aside
+                className={cn(
+                  "border-t p-3 md:border-l md:border-t-0",
+                  showContacts ? "block" : "hidden md:block"
+                )}
+              >
+                <ContactsPanel
+                  customerId={conversation.customer_id}
+                  contacts={conversation.contacts}
+                />
+                <div className="mt-4 space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {DEAL_LABELS[conversation.deal_state]}
+                  </p>
+                  {conversation.deal_state === "deal_closed" && (
+                    <p>
+                      Завершённая сделка сохранена в истории, байк свободен.
+                      Новое сообщение создаст новую сделку.
+                    </p>
+                  )}
+                  <p>
+                    Каналов в чате:{" "}
+                    {conversation.channels.length
+                      ? conversation.channels
+                          .map((c) => CHANNEL_LABELS[c] || c)
+                          .join(", ")
+                      : "нет"}
+                  </p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

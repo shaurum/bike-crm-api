@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SQLEnum, Index, JSON, Boolean, DateTime, Numeric
+from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SQLEnum, Index, JSON, Boolean, DateTime, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from app.models.base import Base, UUIDMixin, TimestampMixin
@@ -177,23 +177,51 @@ class Lead(UUIDMixin, TimestampMixin, Base):
 class LeadMessage(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lead_message"
 
-    lead_id: Mapped[uuid.UUID] = mapped_column(
+    lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("lead.id", ondelete="CASCADE"),
-        nullable=False,
-        comment="Лид",
+        ForeignKey("lead.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Deal if present",
     )
-    channel: Mapped[str] = mapped_column(String(50), nullable=False, comment="Канал: avito, vk, telegram, email, internal")
-    direction: Mapped[str] = mapped_column(String(20), nullable=False, comment="inbound / outbound")
-    content: Mapped[str] = mapped_column(Text, nullable=False, comment="Текст сообщения")
-    external_msg_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="ID сообщения во внешней системе")
-    meta: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Дополнительные метаданные")
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("conversation.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="Conversation with the client",
+    )
+    author_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Who sent the outbound message",
+    )
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, comment="Read by manager"
+    )
+    channel: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="Channel: avito, vk, telegram, email, internal"
+    )
+    direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, comment="inbound / outbound"
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="Message text")
+    external_msg_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, comment="Message id in external system"
+    )
+    meta: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Extra data")
 
-    lead: Mapped["Lead"] = relationship(back_populates="messages", lazy="selectin")
+    lead: Mapped["Lead"] = relationship(back_populates="messages", lazy="noload")
 
     __table_args__ = (
         Index("ix_lead_message_lead_created", "lead_id", "created_at"),
         Index("ix_lead_message_external", "external_msg_id"),
+        Index(
+            "uq_lead_message_external_unique",
+            "channel",
+            "external_msg_id",
+            unique=True,
+            postgresql_where=text("external_msg_id IS NOT NULL"),
+        ),
     )
 
 

@@ -361,10 +361,17 @@ interface EmailSettingsResponse {
     from_email: string | null;
     from_name: string | null;
     use_tls: boolean;
+    imap_host: string | null;
+    imap_port: number;
+    imap_username: string | null;
+    imap_use_ssl: boolean;
+    imap_folder: string;
   };
   password_set: boolean;
   api_key_set: boolean;
+  imap_password_set: boolean;
   from_env: boolean;
+  imap_ready: boolean;
 }
 
 /** Форма редактирования: пустые значения — обычные строки, не null. */
@@ -376,6 +383,11 @@ interface EmailForm {
   from_email: string;
   from_name: string;
   use_tls: boolean;
+  imap_host: string;
+  imap_port: number;
+  imap_username: string;
+  imap_use_ssl: boolean;
+  imap_folder: string;
 }
 
 function EmailIntegration() {
@@ -389,9 +401,15 @@ function EmailIntegration() {
     from_email: "",
     from_name: "",
     use_tls: true,
+    imap_host: "",
+    imap_port: 993,
+    imap_username: "",
+    imap_use_ssl: true,
+    imap_folder: "INBOX",
   });
   const [password, setPassword] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
   const [testTo, setTestTo] = useState("");
 
   const { data, isLoading } = useQuery({
@@ -413,6 +431,11 @@ function EmailIntegration() {
       from_email: data.config.from_email || "",
       from_name: data.config.from_name || "",
       use_tls: data.config.use_tls,
+      imap_host: data.config.imap_host || "",
+      imap_port: data.config.imap_port || 993,
+      imap_username: data.config.imap_username || "",
+      imap_use_ssl: data.config.imap_use_ssl,
+      imap_folder: data.config.imap_folder || "INBOX",
     });
   }, [data]);
 
@@ -425,6 +448,7 @@ function EmailIntegration() {
       // Пустая строка означает «оставить прежний секрет»
       if (password) payload.password = password;
       if (apiKey) payload.api_key = apiKey;
+      if (imapPassword) payload.imap_password = imapPassword;
       const { data } = await api.patch<EmailSettingsResponse>(
         "/settings/integrations/email",
         payload
@@ -434,6 +458,7 @@ function EmailIntegration() {
     onSuccess: () => {
       setPassword("");
       setApiKey("");
+      setImapPassword("");
       toast({ title: "Настройки почты сохранены" });
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
@@ -610,6 +635,102 @@ function EmailIntegration() {
             </label>
           </>
         )}
+      </div>
+
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium">Приём входящих писем (IMAP)</p>
+          <span
+            className={
+              data?.imap_ready
+                ? "inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] text-green-800"
+                : "inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+            }
+          >
+            {data?.imap_ready ? "Приём настроен" : "Приём не настроен"}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Без IMAP входящие письма приходят только через вебхук провайдера.
+          Заполните сервер, логин и пароль — письма будут забираться сами
+          раз в минуту.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="imap_host">
+              IMAP-сервер
+            </label>
+            <input
+              id="imap_host"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={form.imap_host}
+              placeholder="imap.yandex.com"
+              onChange={(e) => set({ imap_host: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="imap_port">
+              Порт IMAP
+            </label>
+            <input
+              id="imap_port"
+              type="number"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={form.imap_port}
+              onChange={(e) => set({ imap_port: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="imap_username">
+              Логин IMAP
+            </label>
+            <input
+              id="imap_username"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={form.imap_username}
+              placeholder="mail@example.com"
+              onChange={(e) => set({ imap_username: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="imap_password">
+              Пароль IMAP {data?.imap_password_set && "(сохранён)"}
+            </label>
+            <input
+              id="imap_password"
+              type="password"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={imapPassword}
+              placeholder={
+                data?.imap_password_set
+                  ? "\u2022\u2022\u2022\u2022\u2022\u2022 \u2014 оставьте пустым, чтобы не менять"
+                  : ""
+              }
+              onChange={(e) => setImapPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="imap_folder">
+              Папка
+            </label>
+            <input
+              id="imap_folder"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={form.imap_folder}
+              onChange={(e) => set({ imap_folder: e.target.value })}
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 self-end pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.imap_use_ssl}
+              onChange={(e) => set({ imap_use_ssl: e.target.checked })}
+              className="h-4 w-4"
+            />
+            SSL (обычно на порту 993)
+          </label>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

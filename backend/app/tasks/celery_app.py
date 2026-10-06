@@ -33,6 +33,10 @@ celery_app.conf.update(
             "task": "app.tasks.notifications.check_overdue_tasks",
             "schedule": 900.0,
         },
+        "poll-email-inbox": {
+            "task": "app.tasks.webhooks.poll_email_inbox",
+            "schedule": 60.0,
+        },
         "daily-backup": {
             "task": "app.tasks.maintenance.daily_backup",
             "schedule": 86400.0,

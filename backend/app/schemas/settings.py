@@ -25,7 +25,7 @@ class IntegrationSummary(BaseModel):
 
 
 class EmailSettings(BaseModel):
-    """Настройки исходящей почты.
+    """Настройки исходящей и входящей почты.
 
     Секреты приходят пустыми, если их не меняли. Пустая строка означает
     «оставить как есть», поэтому чтобы сбросить секрет — передать `null`.
@@ -38,6 +38,13 @@ class EmailSettings(BaseModel):
     from_email: Optional[str] = None
     from_name: Optional[str] = None
     use_tls: bool = True
+
+    # Входящие письма забираем по IMAP
+    imap_host: Optional[str] = None
+    imap_port: int = 993
+    imap_username: Optional[str] = None
+    imap_use_ssl: bool = True
+    imap_folder: str = "INBOX"
 
     @field_validator("provider")
     @classmethod
@@ -53,17 +60,24 @@ class EmailSettingsUpdate(BaseModel):
     config: EmailSettings
     password: Optional[str] = Field(None, description="Новый пароль SMTP; null — не менять")
     api_key: Optional[str] = Field(None, description="Новый API-ключ Resend; null — не менять")
+    imap_password: Optional[str] = Field(
+        None, description="Новый пароль IMAP; null — не менять"
+    )
 
 
 class EmailSettingsResponse(BaseModel):
-    """Ответ с настройками почты. `password` и `api_key` — только признаки."""
+    """Ответ с настройками почты. Секреты — только признаки."""
 
     is_enabled: bool
     config: EmailSettings
     password_set: bool = False
     api_key_set: bool = False
+    imap_password_set: bool = False
     from_env: bool = Field(
         False, description="Настройки берутся из переменных окружения, а не из CRM"
+    )
+    imap_ready: bool = Field(
+        False, description="Настроен ли приём входящих писем"
     )
     updated_at: Optional[datetime] = None
 

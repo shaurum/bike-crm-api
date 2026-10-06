@@ -4,6 +4,7 @@ import {
   Users,
   Bike,
   FileText,
+  MessageSquare,
   ListChecks,
   Settings,
   type LucideIcon,
@@ -21,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/customers", label: "Клиенты", icon: Users },
   { href: "/parking", label: "Парковка", icon: Bike },
   { href: "/documents", label: "Документы", icon: FileText },
+  { href: "/messages", label: "Сообщения", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: ListChecks },
   { href: "/settings", label: "Настройки", icon: Settings },
 ];
