@@ -49,6 +49,8 @@ class ConversationListResponse(BaseModel):
     deal_state: str = Field("none", description="active / deal_closed / none")
     preview: Optional[str] = None
     channel: Optional[str] = None
+    # Последнее сообщение пришло от клиента — мы ещё не ответили
+    awaiting_reply: bool = False
     contacts: List[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

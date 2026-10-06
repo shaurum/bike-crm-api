@@ -27,6 +27,7 @@ interface ConversationItem {
   deal_state: "active" | "deal_closed" | "none";
   preview: string | null;
   channel: string | null;
+  awaiting_reply: boolean;
   contacts: string[];
 }
 
@@ -90,6 +91,14 @@ function formatTime(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function AwaitingBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+      Ждёт ответа
+    </span>
+  );
 }
 
 function DealBadge({ state }: { state: string }) {
@@ -178,7 +187,8 @@ function ConversationList({
             </span>
           </div>
 
-          <div className="mt-1 flex items-center gap-1.5">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {item.awaiting_reply && <AwaitingBadge />}
             <DealBadge state={item.deal_state} />
             {item.channel && (
               <span className="text-[11px] text-muted-foreground">
@@ -565,6 +575,11 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.messages]);
 
+  const openedMessages = conversation?.messages ?? [];
+  const awaitingReply =
+    openedMessages.length > 0 &&
+    openedMessages[openedMessages.length - 1].direction === "inbound";
+
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-4">
       <aside
@@ -642,6 +657,7 @@ export default function MessagesPage() {
                   <h2 className="truncate text-sm font-semibold">
                     {conversation.customer_name}
                   </h2>
+                  {awaitingReply && <AwaitingBadge />}
                   <DealBadge state={conversation.deal_state} />
                   {conversation.status === "closed" && (
                     <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">

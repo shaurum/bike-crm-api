@@ -120,6 +120,7 @@ async def list_conversations(
                 deal_state=state,
                 preview=(last.content[:140] if last else None),
                 channel=(last.channel if last else None),
+                awaiting_reply=bool(last and last.direction == "inbound"),
                 contacts=contacts,
             )
         )
