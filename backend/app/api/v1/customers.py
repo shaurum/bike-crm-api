@@ -1,16 +1,44 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+import os
+
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from uuid import UUID
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
-from app.models import Customer, User, UserRole
-from app.schemas.rental import CustomerResponse, CustomerListResponse
+from app.models import (
+    Customer,
+    CustomerDocument,
+    CustomerDocumentType,
+    User,
+    UserRole,
+)
+from app.schemas.rental import (
+    CustomerResponse,
+    CustomerListResponse,
+    CustomerCreate,
+    CustomerUpdate,
+    CustomerDocumentResponse,
+)
 
 router = APIRouter(prefix="/customers", tags=["customers"])
+
+ALLOWED_DOC_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+}
+
+
+def _load(query):
+    return query.options(
+        selectinload(Customer.documents), selectinload(Customer.bookings)
+    )
 
 
 @router.get("", response_model=CustomerListResponse)
@@ -25,16 +53,26 @@ async def list_customers(
     query = select(Customer)
 
     if search:
+        pattern = f"%{search}%"
         query = query.where(
-            Customer.full_name.ilike(f"%{search}%") |
-            Customer.phone.ilike(f"%{search}%") |
-            Customer.email.ilike(f"%{search}%")
+            or_(
+                Customer.full_name.ilike(pattern),
+                Customer.phone.ilike(pattern),
+                Customer.email.ilike(pattern),
+                Customer.passport_number.ilike(pattern),
+                Customer.passport_series.ilike(pattern),
+            )
         )
     if is_blacklisted is not None:
         query = query.where(Customer.is_blacklisted == is_blacklisted)
 
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    query = query.order_by(Customer.created_at.desc()).offset((page - 1) * size).limit(size)
+    query = (
+        _load(query)
+        .order_by(Customer.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
     result = await db.execute(query)
     customers = result.scalars().all()
 
@@ -47,16 +85,9 @@ async def list_customers(
     }
 
 
-@router.get("/{customer_id}", response_model=CustomerResponse)
-async def get_customer(
-    customer_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+async def _get_customer(db: AsyncSession, customer_id: UUID) -> Customer:
     result = await db.execute(
-        select(Customer)
-        .options(selectinload(Customer.bookings))
-        .where(Customer.id == customer_id)
+        _load(select(Customer)).where(Customer.id == customer_id)
     )
     customer = result.scalar_one_or_none()
     if not customer:
@@ -64,14 +95,173 @@ async def get_customer(
     return customer
 
 
-@router.post("", response_model=CustomerResponse, status_code=201)
-async def create_customer(
-    customer_data: dict,
+@router.get("/{customer_id}", response_model=CustomerResponse)
+async def get_customer(
+    customer_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    customer = Customer(**customer_data)
+    return await _get_customer(db, customer_id)
+
+
+@router.post("", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
+async def create_customer(
+    payload: CustomerCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    existing = (
+        await db.execute(
+            select(Customer.id).where(
+                or_(
+                    Customer.phone == payload.phone,
+                    Customer.email == payload.email
+                    if payload.email
+                    else False,
+                )
+            )
+        )
+    ).scalars().first()
+    if existing:
+        raise HTTPException(
+            status_code=409, detail="Клиент с таким телефоном или email уже есть"
+        )
+
+    customer = Customer(**payload.model_dump())
     db.add(customer)
     await db.commit()
-    await db.refresh(customer)
-    return customer
+    return await _get_customer(db, customer.id)
+
+
+@router.patch("/{customer_id}", response_model=CustomerResponse)
+async def update_customer(
+    customer_id: UUID,
+    payload: CustomerUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    customer = await db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(customer, field, value)
+
+    await db.commit()
+    return await _get_customer(db, customer_id)
+
+
+@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_customer(
+    customer_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models import Booking
+
+    has_bookings = (
+        await db.execute(
+            select(Booking.id).where(Booking.customer_id == customer_id).limit(1)
+        )
+    ).scalars().first()
+    if has_bookings:
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить клиента с историей аренды — отметьте в стоп-листе",
+        )
+
+    customer = await db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+
+    await db.delete(customer)
+    await db.commit()
+    return None
+
+
+# ------------------------------------------------------------------
+# Сканы документов
+# ------------------------------------------------------------------
+
+@router.post(
+    "/{customer_id}/documents",
+    response_model=CustomerDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_document(
+    customer_id: UUID,
+    file: UploadFile = File(...),
+    kind: CustomerDocumentType = Form(CustomerDocumentType.PASSPORT_RF),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    customer = await db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+
+    ext = ALLOWED_DOC_TYPES.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(
+            status_code=415,
+            detail="Поддерживаются JPG, PNG, WEBP и PDF",
+        )
+
+    payload = await file.read()
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if len(payload) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"Файл больше {settings.MAX_UPLOAD_MB} МБ"
+        )
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    filename = f"customer-{customer_id}-{uuid4hex()}{ext}"
+    with open(os.path.join(settings.UPLOAD_DIR, filename), "wb") as fh:
+        fh.write(payload)
+
+    document = CustomerDocument(
+        customer_id=customer_id,
+        kind=kind,
+        file_url=f"/uploads/{filename}",
+        original_name=file.filename,
+        content_type=file.content_type,
+        size=len(payload),
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    return document
+
+
+def uuid4hex() -> str:
+    from uuid import uuid4
+
+    return uuid4().hex[:12]
+
+
+@router.delete(
+    "/{customer_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_document(
+    customer_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(CustomerDocument).where(
+            CustomerDocument.id == document_id,
+            CustomerDocument.customer_id == customer_id,
+        )
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    path = os.path.join(settings.UPLOAD_DIR, os.path.basename(document.file_url))
+    if os.path.exists(path):
+        os.remove(path)
+
+    await db.delete(document)
+    await db.commit()
+    return None

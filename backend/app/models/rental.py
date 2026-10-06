@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, List
 from sqlalchemy import String, Text, Integer, Float, ForeignKey, Enum as SQLEnum, Index, Boolean, DateTime, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -145,6 +145,17 @@ class User(UUIDMixin, TimestampMixin, Base):
     )
 
 
+class CustomerDocumentType(str, enum.Enum):
+    """Документ, удостоверяющий личность. Не ограничивается РФ."""
+
+    PASSPORT_RF = "passport_rf"
+    FOREIGN_PASSPORT = "foreign_passport"
+    RESIDENCE_PERMIT = "residence_permit"
+    ID_CARD = "id_card"
+    DRIVER_LICENSE = "driver_license"
+    OTHER = "other"
+
+
 class Customer(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "customer"
 
@@ -157,15 +168,65 @@ class Customer(UUIDMixin, TimestampMixin, Base):
     passport_issued_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Когда выдан")
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Адрес регистрации")
     driver_license: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Водительское удостоверение")
+
+    document_type: Mapped[CustomerDocumentType] = mapped_column(
+        SQLEnum(CustomerDocumentType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        default=CustomerDocumentType.PASSPORT_RF,
+        nullable=False,
+        comment="Тип документа, удостоверяющего личность",
+    )
+    country: Mapped[str] = mapped_column(
+        String(100), default="Россия", nullable=False, comment="Гражданство или страна документа"
+    )
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, comment="Дата рождения")
+    birth_place: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Место рождения")
+    passport_code: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, comment="Код подразделения паспорта"
+    )
+
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Примечания")
-    is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="В чёрном списке")
+    is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="В стоп-листе")
 
     bookings: Mapped[List["Booking"]] = relationship(back_populates="customer", lazy="selectin")
+    documents: Mapped[List["CustomerDocument"]] = relationship(
+        back_populates="customer",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="CustomerDocument.created_at",
+    )
 
     __table_args__ = (
         Index("ix_customer_phone", "phone"),
         Index("ix_customer_email", "email"),
         Index("ix_customer_passport", "passport_series", "passport_number"),
+        Index("ix_customer_full_name", "full_name"),
+    )
+
+
+class CustomerDocument(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "customer_document"
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("customer.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Клиент",
+    )
+    kind: Mapped[CustomerDocumentType] = mapped_column(
+        SQLEnum(CustomerDocumentType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        default=CustomerDocumentType.PASSPORT_RF,
+        nullable=False,
+        comment="Что за документ",
+    )
+    file_url: Mapped[str] = mapped_column(String(500), nullable=False, comment="Путь к файлу")
+    original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Имя файла при загрузке")
+    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Размер в байтах")
+
+    customer: Mapped["Customer"] = relationship(back_populates="documents")
+
+    __table_args__ = (
+        Index("ix_customer_document_customer", "customer_id"),
     )
 
 

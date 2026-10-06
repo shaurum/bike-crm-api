@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
+from enum import Enum
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
@@ -163,12 +164,39 @@ class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CustomerDocumentType(str, Enum):
+    PASSPORT_RF = "passport_rf"
+    FOREIGN_PASSPORT = "foreign_passport"
+    RESIDENCE_PERMIT = "residence_permit"
+    ID_CARD = "id_card"
+    DRIVER_LICENSE = "driver_license"
+    OTHER = "other"
+
+
+class CustomerDocumentResponse(BaseModel):
+    id: UUID
+    customer_id: UUID
+    kind: CustomerDocumentType
+    file_url: str
+    original_name: Optional[str] = None
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CustomerBase(BaseModel):
     full_name: str
     phone: str
     email: Optional[EmailStr] = None
+    document_type: CustomerDocumentType = CustomerDocumentType.PASSPORT_RF
+    country: str = "Россия"
+    birth_date: Optional[date] = None
+    birth_place: Optional[str] = None
     passport_series: Optional[str] = None
     passport_number: Optional[str] = None
+    passport_code: Optional[str] = None
     passport_issued_by: Optional[str] = None
     passport_issued_date: Optional[datetime] = None
     address: Optional[str] = None
@@ -185,8 +213,13 @@ class CustomerUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
+    document_type: Optional[CustomerDocumentType] = None
+    country: Optional[str] = None
+    birth_date: Optional[date] = None
+    birth_place: Optional[str] = None
     passport_series: Optional[str] = None
     passport_number: Optional[str] = None
+    passport_code: Optional[str] = None
     passport_issued_by: Optional[str] = None
     passport_issued_date: Optional[datetime] = None
     address: Optional[str] = None
@@ -199,6 +232,7 @@ class CustomerResponse(CustomerBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    documents: List[CustomerDocumentResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

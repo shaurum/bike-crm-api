@@ -1,4 +1,4 @@
-from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
+﻿from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
 from app.models.crm import (
     LeadSource,
     LeadSourceType,
@@ -21,6 +21,8 @@ from app.models.rental import (
     User,
     UserRole,
     Customer,
+    CustomerDocument,
+    CustomerDocumentType,
     Booking,
     BookingStatus,
     MaintenanceRecord,
@@ -50,6 +52,8 @@ __all__ = [
     "User",
     "UserRole",
     "Customer",
+    "CustomerDocument",
+    "CustomerDocumentType",
     "Booking",
     "BookingStatus",
     "MaintenanceRecord",
