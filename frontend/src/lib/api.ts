@@ -97,8 +97,14 @@ export const usersApi = {
 };
 
 export const documentsApi = {
-  list: (params?: { page?: number; size?: number; kind?: string; status?: string }) =>
-    api.get("/documents", { params }),
+  list: (params?: {
+    page?: number;
+    size?: number;
+    kind?: string;
+    status?: string;
+    lead_id?: string;
+    customer_id?: string;
+  }) => api.get("/documents", { params }),
   company: () => api.get("/documents/company"),
   updateCompany: (data: any) => api.patch("/documents/company", data),
   generate: (lead_id: string, allow_incomplete = false) =>
@@ -112,6 +118,14 @@ export const documentsApi = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+  attachSigned: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/documents/${id}/signed`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  detachSigned: (id: string) => api.delete(`/documents/${id}/signed`),
   changeStatus: (id: string, status: string) =>
     api.patch(`/documents/${id}/status?doc_status=${status}`),
   remove: (id: string) => api.delete(`/documents/${id}`),

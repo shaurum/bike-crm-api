@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Phone,
   Mail,
@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { leadsApi, customersApi, bikesApi, documentsApi } from "@/lib/api";
+import { leadsApi, customersApi, bikesApi, documentsApi, API_URL } from "@/lib/api";
 import {
   CustomerPicker,
   type PickedCustomer,
@@ -86,6 +86,17 @@ interface BikeOption {
   is_rented: boolean;
   status: string;
   linked_lead_id: string | null;
+}
+
+interface DealDoc {
+  id: string;
+  number: string | null;
+  kind: string;
+  status: string;
+  file_url: string | null;
+  original_name: string | null;
+  signed_file_url: string | null;
+  signed_at: string | null;
 }
 
 const NONE = "__none__";
@@ -146,7 +157,7 @@ export function LeadDetailDialog({
   const [sources, setSources] = useState<Source[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [bikes, setBikes] = useState<BikeOption[]>([]);
-  const [docs, setDocs] = useState(0);
+  const [docs, setDocs] = useState<DealDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [comment, setComment] = useState("");
@@ -263,7 +274,8 @@ export function LeadDetailDialog({
     try {
       await documentsApi.generate(lead.id, allowIncomplete);
       onSaved();
-      setDocs((prev) => prev + 1);
+      const docsRes = await documentsApi.list({ lead_id: lead.id, size: 50 });
+      setDocs((docsRes.data?.items ?? []) as DealDoc[]);
     } catch (err: any) {
       setGenError(err.response?.data?.detail || "Не удалось сформировать документ");
     } finally {
@@ -275,6 +287,18 @@ export function LeadDetailDialog({
   const availableBikes = bikes.filter(
     (b) => !b.linked_lead_id || b.linked_lead_id === lead?.id
   );
+
+  const selectedBike = bikes.find((b) => b.id === bikeId);
+  const rentalDays = useMemo(() => {
+    if (!rentalStart || !rentalEnd) return null;
+    const a = new Date(rentalStart);
+    const b = new Date(rentalEnd);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+    return Math.max(Math.round((b.getTime() - a.getTime()) / 86400000), 0);
+  }, [rentalStart, rentalEnd]);
+
+  const fmt = (v: string) =>
+    v ? new Date(v).toLocaleDateString("ru-RU") : "—";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -429,6 +453,37 @@ export function LeadDetailDialog({
               </Field>
             </div>
 
+            {(selectedBike || rentalDays != null || lead?.amount != null) && (
+              <div className="grid gap-3 rounded-lg border bg-gray-50 p-3 text-sm sm:grid-cols-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Байк в аренде</p>
+                  <p className="font-medium">
+                    {selectedBike
+                      ? `${selectedBike.model}${
+                          selectedBike.frame_number
+                            ? ` · № ${selectedBike.frame_number}`
+                            : ""
+                        }`
+                      : "не выбран"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Срок аренды</p>
+                  <p className="font-medium">
+                    {rentalDays != null
+                      ? `${fmt(rentalStart)} — ${fmt(rentalEnd)} · ${rentalDays} дн.`
+                      : "не задан"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Сумма</p>
+                  <p className="font-medium">
+                    {lead?.amount != null ? formatCurrency(lead.amount) : "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Button
                 variant="outline"
@@ -440,8 +495,8 @@ export function LeadDetailDialog({
                 {generating ? "Формируем…" : "Сгенерировать договор"}
               </Button>
               <p className="text-xs text-muted-foreground">
-                {docs > 0
-                  ? `Документов по сделке: ${docs}. Формируется новый PDF.`
+                {docs.length > 0
+                  ? `Документов по сделке: ${docs.length}. Формируется новый PDF.`
                   : "Документы появятся в разделе «Документы»"}
               </p>
               {genError && (
@@ -459,6 +514,67 @@ export function LeadDetailDialog({
                     </Button>
                   )}
                 </div>
+              )}
+            </div>
+
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-semibold">Документы по сделке</p>
+              {docs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Договоры и сканы пока не приложены
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {docs.map((doc) => (
+                    <li
+                      key={doc.id}
+                      className="rounded-md border bg-white p-2.5 text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText
+                          className="h-4 w-4 shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {doc.number || doc.original_name || doc.kind}
+                        </span>
+                        <Badge variant="secondary" className="shrink-0 text-[11px]">
+                          {doc.status === "signed"
+                            ? "подписан"
+                            : doc.status === "issued"
+                              ? "выдан"
+                              : "черновик"}
+                        </Badge>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-2 pl-6 text-xs">
+                        {doc.file_url && (
+                          <a
+                            href={`${API_URL}${doc.file_url}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            Договор PDF
+                          </a>
+                        )}
+                        {doc.signed_file_url ? (
+                          <a
+                            href={`${API_URL}${doc.signed_file_url}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            Подписанный скан ({doc.signed_at ? fmt(doc.signed_at) : ""})
+                          </a>
+                        ) : (
+                          <span className="text-amber-600">
+                            скан не приложен
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 

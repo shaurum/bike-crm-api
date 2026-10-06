@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Building2,
   ExternalLink,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,10 @@ interface DocItem {
   file_url: string | null;
   original_name: string | null;
   size: number | null;
+  signed_file_url: string | null;
+  signed_original_name: string | null;
+  signed_at: string | null;
+  signed_size: number | null;
   payload: { incomplete?: string[] };
   created_at: string;
   customer?: { id: string; full_name: string } | null;
@@ -363,6 +368,24 @@ export function DocumentsPage() {
     }
   };
 
+  const attach = async (id: string, file: File) => {
+    try {
+      await documentsApi.attachSigned(id, file);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось приложить скан");
+    }
+  };
+
+  const detach = async (doc: DocItem) => {
+    try {
+      await documentsApi.detachSigned(doc.id);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось открепить скан");
+    }
+  };
+
   const changeStatus = async (id: string, next: string) => {
     try {
       await documentsApi.changeStatus(id, next);
@@ -485,6 +508,51 @@ export function DocumentsPage() {
                   </a>
                 </Button>
               )}
+
+              <div className="rounded-md border border-dashed p-2">
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Подписанный скан
+                </p>
+                {doc.signed_file_url ? (
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`${API_URL}${doc.signed_file_url}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+                    >
+                      {doc.signed_original_name || "скан"}
+                    </a>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {fmtDate(doc.signed_at)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => detach(doc)}
+                      aria-label="Открепить скан"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-300 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      className="w-full rounded-md border border-input bg-background p-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-gray-100 file:px-2 file:py-1"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) attach(doc.id, f);
+                        e.target.value = "";
+                      }}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Приложите подписанный документ
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
