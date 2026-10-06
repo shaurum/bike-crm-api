@@ -96,6 +96,27 @@ export const usersApi = {
   list: () => api.get("/users/list"),
 };
 
+export const documentsApi = {
+  list: (params?: { page?: number; size?: number; kind?: string; status?: string }) =>
+    api.get("/documents", { params }),
+  company: () => api.get("/documents/company"),
+  updateCompany: (data: any) => api.patch("/documents/company", data),
+  generate: (lead_id: string, allow_incomplete = false) =>
+    api.post("/documents/generate", { lead_id, allow_incomplete }),
+  uploadScan: (file: File, opts?: { customer_id?: string | null; number?: string | null }) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (opts?.customer_id) form.append("customer_id", opts.customer_id);
+    if (opts?.number) form.append("number", opts.number);
+    return api.post("/documents", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  changeStatus: (id: string, status: string) =>
+    api.patch(`/documents/${id}/status?doc_status=${status}`),
+  remove: (id: string) => api.delete(`/documents/${id}`),
+};
+
 export const leadsApi = {
   list: (params?: {
     page?: number;

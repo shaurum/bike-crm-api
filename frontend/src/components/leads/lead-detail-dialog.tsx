@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { leadsApi, customersApi, bikesApi } from "@/lib/api";
+import { leadsApi, customersApi, bikesApi, documentsApi } from "@/lib/api";
 import {
   CustomerPicker,
   type PickedCustomer,
@@ -146,6 +146,7 @@ export function LeadDetailDialog({
   const [sources, setSources] = useState<Source[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [bikes, setBikes] = useState<BikeOption[]>([]);
+  const [docs, setDocs] = useState(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [comment, setComment] = useState("");
@@ -249,6 +250,24 @@ export function LeadDetailDialog({
       setError(err.response?.data?.detail || "Не удалось добавить комментарий");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState("");
+
+  const generateContract = async (allowIncomplete: boolean) => {
+    if (!lead) return;
+    setGenerating(true);
+    setGenError("");
+    try {
+      await documentsApi.generate(lead.id, allowIncomplete);
+      onSaved();
+      setDocs((prev) => prev + 1);
+    } catch (err: any) {
+      setGenError(err.response?.data?.detail || "Не удалось сформировать документ");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -410,15 +429,38 @@ export function LeadDetailDialog({
               </Field>
             </div>
 
-            <Button
-              variant="outline"
-              disabled
-              className="w-full sm:w-auto"
-              title="Функционал появится позже"
-            >
-              <FileText className="mr-2 h-4 w-4" aria-hidden />
-              Сгенерировать документ
-            </Button>
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                disabled={generating}
+                className="w-full sm:w-auto"
+                onClick={() => generateContract(true)}
+              >
+                <FileText className="mr-2 h-4 w-4" aria-hidden />
+                {generating ? "Формируем…" : "Сгенерировать договор"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {docs > 0
+                  ? `Документов по сделке: ${docs}. Формируется новый PDF.`
+                  : "Документы появятся в разделе «Документы»"}
+              </p>
+              {genError && (
+                <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+                  {genError}
+                  {genError.includes("Не заполнено") && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="ml-1 h-auto p-0 align-baseline"
+                      disabled={generating}
+                      onClick={() => generateContract(true)}
+                    >
+                      Сформировать с прочерками
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="space-y-3 border-t pt-4">
               <p className="flex items-center gap-1.5 text-sm font-semibold">
