@@ -132,6 +132,16 @@ class BikePatch(BaseModel):
     prices: Optional[BikePriceTier] = None
 
 
+class UserBrief(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    role: UserRole
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserBase(BaseModel):
     email: EmailStr
     full_name: str

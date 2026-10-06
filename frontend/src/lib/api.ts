@@ -92,6 +92,10 @@ export const authApi = {
   me: () => api.get("/auth/me"),
 };
 
+export const usersApi = {
+  list: () => api.get("/users/list"),
+};
+
 export const leadsApi = {
   list: (params?: {
     page?: number;
@@ -107,6 +111,8 @@ export const leadsApi = {
     client_name?: string;
     client_phone?: string;
     client_email?: string;
+    bike_id?: string | null;
+    assigned_to_id?: string | null;
     initial_message?: string;
   }) => api.post("/leads", data),
   assign: (id: string, user_id: string) => api.patch(`/leads/${id}/assign`, null, { params: { user_id } }),

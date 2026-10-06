@@ -77,6 +77,15 @@ const DOC_TYPES = [
   { value: "other", label: "Другой документ" },
 ];
 
+// Примеры под российский паспорт, чтобы было понятно, чего ждёт форма
+const RF_EXAMPLES: Record<string, string> = {
+  series: "45 12",
+  number: "123456",
+  code: "001-002",
+  issued_by: "ГУ МВД России по г. Москве",
+  country: "Россия",
+};
+
 const DOC_LABELS: Record<string, string> = Object.fromEntries(
   DOC_TYPES.map((d) => [d.value, d.label])
 );
@@ -464,6 +473,7 @@ export function CustomerDialog({
                       id="c-series"
                       value={series}
                       onChange={(e) => setSeries(e.target.value)}
+                      placeholder={RF_EXAMPLES.series}
                     />
                   </div>
 
@@ -475,6 +485,7 @@ export function CustomerDialog({
                       id="c-number"
                       value={number}
                       onChange={(e) => setNumber(e.target.value)}
+                      placeholder={RF_EXAMPLES.number}
                     />
                   </div>
 
@@ -486,6 +497,7 @@ export function CustomerDialog({
                       id="c-code"
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
+                      placeholder={RF_EXAMPLES.code}
                     />
                   </div>
 
@@ -521,6 +533,7 @@ export function CustomerDialog({
                       id="c-issuedby"
                       value={issuedBy}
                       onChange={(e) => setIssuedBy(e.target.value)}
+                      placeholder={RF_EXAMPLES.issued_by}
                     />
                   </div>
 

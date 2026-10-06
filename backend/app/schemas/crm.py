@@ -118,6 +118,7 @@ class LeadManualCreate(BlankEmailMixin):
     client_phone: Optional[str] = None
     client_email: Optional[EmailStr] = None
     bike_id: Optional[UUID] = None
+    assigned_to_id: Optional[UUID] = None
     initial_message: Optional[str] = None
     utm: dict = {}
 

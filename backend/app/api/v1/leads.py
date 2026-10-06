@@ -136,6 +136,12 @@ async def create_lead(
     if payload.bike_id:
         await ensure_bike_is_free(db, payload.bike_id, None)
 
+    # Ответственный: явно выбранный или автор лида
+    assignee_id = payload.assigned_to_id or current_user.id
+    assignee = await db.get(User, assignee_id)
+    if not assignee or not assignee.is_active:
+        raise HTTPException(status_code=404, detail="Менеджер не найден")
+
     lead = Lead(
         source_id=source.id,
         external_id=f"manual-{uuid4().hex[:8]}",
@@ -143,6 +149,7 @@ async def create_lead(
         client_phone=payload.client_phone,
         client_email=payload.client_email,
         bike_id=payload.bike_id,
+        assigned_to_id=assignee_id,
         initial_message=payload.initial_message,
         utm=payload.utm or {},
         status=LeadStatus.NEW,
@@ -366,12 +373,23 @@ async def assign_lead(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Только админ может назначать")
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
+
+    # Админ назначает кого угодно, менеджер — только себя или свою сделку
+    if (
+        current_user.role != UserRole.ADMIN
+        and user_id != current_user.id
+        and lead.assigned_to_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Только админ может назначать")
+
+    assignee = await db.get(User, user_id)
+    if not assignee or not assignee.is_active:
+        raise HTTPException(status_code=404, detail="Менеджер не найден")
+
     lead.assigned_to_id = user_id
     await db.commit()
     return {"message": "Лид назначен"}
