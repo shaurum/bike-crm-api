@@ -365,7 +365,7 @@ export function CustomerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-4 pt-5">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-4 pt-5 pr-11">
           <DialogHeader>
             <DialogTitle>{customer?.full_name || "Клиент"}</DialogTitle>
             <DialogDescription>

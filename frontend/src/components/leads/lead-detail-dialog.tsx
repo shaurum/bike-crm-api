@@ -303,7 +303,7 @@ export function LeadDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <div className="shrink-0 border-b px-5 pb-4 pt-5">
+        <div className="shrink-0 border-b px-5 pb-4 pt-5 pr-11">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
               {lead?.client_name || "Лид"}

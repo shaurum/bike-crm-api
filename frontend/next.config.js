@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Плавающий логотип Next.js в dev-режиме мешает в интерфейсе
+  devIndicators: false,
   images: {
     domains: ["localhost"],
   },

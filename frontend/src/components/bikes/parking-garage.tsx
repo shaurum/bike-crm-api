@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -375,7 +375,7 @@ export function BikeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-4 pt-5">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-4 pt-5 pr-11">
           <DialogHeader>
             <DialogTitle>{bike?.model || "Байк"}</DialogTitle>
             <DialogDescription>
