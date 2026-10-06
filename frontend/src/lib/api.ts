@@ -171,9 +171,26 @@ export const bookingsApi = {
 };
 
 export const customersApi = {
-  list: (params?: { page?: number; size?: number; search?: string }) => api.get("/customers", { params }),
+  list: (params?: {
+    page?: number;
+    size?: number;
+    search?: string;
+    is_blacklisted?: boolean;
+  }) => api.get("/customers", { params }),
   get: (id: string) => api.get(`/customers/${id}`),
   create: (data: any) => api.post("/customers", data),
+  update: (id: string, data: any) => api.patch(`/customers/${id}`, data),
+  remove: (id: string) => api.delete(`/customers/${id}`),
+  uploadDocument: (id: string, file: File, kind: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", kind);
+    return api.post(`/customers/${id}/documents`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  removeDocument: (id: string, documentId: string) =>
+    api.delete(`/customers/${id}/documents/${documentId}`),
 };
 
 export const tasksApi = {

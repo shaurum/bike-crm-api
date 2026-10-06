@@ -1,13 +1,16 @@
-import { Users } from "lucide-react";
-import { PagePlaceholder } from "@/components/layout/page-placeholder";
+import { CustomersList } from "@/components/customers/customers-list";
 
 export default function CustomersPage() {
   return (
-    <PagePlaceholder
-      title="Клиенты"
-      description="База клиентов: контакты, документы, история аренды"
-      icon={Users}
-      hint="Скоро здесь будет реестр клиентов"
-    />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Клиенты</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Паспортные данные и сканы документов для договоров аренды
+        </p>
+      </div>
+
+      <CustomersList />
+    </div>
   );
 }
