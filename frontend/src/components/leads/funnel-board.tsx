@@ -96,9 +96,7 @@ function AddLeadDialog({
   const [open, setOpen] = useState(false);
   const [sourceId, setSourceId] = useState<string>(NO_SOURCE);
   const [customer, setCustomer] = useState<PickedCustomer | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [typedName, setTypedName] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -115,15 +113,11 @@ function AddLeadDialog({
       await leadsApi.create({
         source_id: sourceId,
         customer_id: customer?.id ?? null,
-        client_name: customer?.full_name ?? name ?? undefined,
-        client_phone: customer?.phone ?? phone ?? undefined,
-        client_email: customer?.email ?? email ?? undefined,
+        client_name: customer?.full_name ?? typedName.trim() ?? undefined,
+        client_email: customer?.email ?? undefined,
         initial_message: message || undefined,
       });
       setOpen(false);
-      setName("");
-      setPhone("");
-      setEmail("");
       setMessage("");
       onCreated();
     } catch (err: any) {
@@ -179,51 +173,15 @@ function AddLeadDialog({
             <label className="text-sm font-medium" htmlFor="lead-customer">
               Клиент
             </label>
-            <CustomerPicker value={customer} onChange={setCustomer} autoFocus />
+            <CustomerPicker
+              value={customer}
+              onChange={setCustomer}
+              onTextChange={setTypedName}
+              autoFocus
+            />
             <p className="text-xs text-muted-foreground">
               Если клиента нет в базе — создайте его прямо отсюда
             </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="lead-name">
-              Имя
-            </label>
-            <Input
-              id="lead-name"
-              name="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Иван Петров"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="lead-phone">
-              Телефон
-            </label>
-            <Input
-              id="lead-phone"
-              name="tel"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+7 999 123-45-67"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="lead-email">
-              Email
-            </label>
-            <Input
-              id="lead-email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="ivan@example.com"
-            />
           </div>
 
           <div className="space-y-1.5">

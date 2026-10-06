@@ -58,11 +58,13 @@ function passportOf(m: Match): string {
 export function CustomerPicker({
   value,
   onChange,
+  onTextChange,
   placeholder = "Начните вводить ФИО или телефон",
   autoFocus,
 }: {
   value: PickedCustomer | null;
   onChange: (customer: PickedCustomer | null) => void;
+  onTextChange?: (text: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
 }) {
@@ -148,6 +150,7 @@ export function CustomerPicker({
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
+            onTextChange?.(e.target.value);
             if (value) onChange(null);
           }}
           onFocus={() => setOpen(true)}
