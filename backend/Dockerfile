@@ -8,6 +8,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
+    libglib2.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi8 \
+    shared-mime-info \
+    fonts-dejavu-core \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -28,7 +38,12 @@ COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN mkdir -p /app/templates /app/uploads && chown -R appuser:appuser /app
+RUN mkdir -p /app/templates /app/uploads /tmp/.cache \
+    && chown -R appuser:appuser /app \
+    && chmod 777 /tmp/.cache
+
+# WeasyPrint требует доступный кэш шрифтов
+ENV XDG_CACHE_HOME=/tmp/.cache
 
 USER appuser
 

@@ -1,4 +1,4 @@
-﻿from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
+from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
 from app.models.crm import (
     LeadSource,
     LeadSourceType,
@@ -12,6 +12,10 @@ from app.models.crm import (
     TaskStatus,
     BookingWidget,
     ContractTemplate,
+    Document,
+    DocumentKind,
+    DocumentStatus,
+    CompanyProfile,
 )
 from app.models.rental import (
     Branch,
@@ -45,6 +49,10 @@ __all__ = [
     "TaskStatus",
     "BookingWidget",
     "ContractTemplate",
+    "Document",
+    "DocumentKind",
+    "DocumentStatus",
+    "CompanyProfile",
     "Branch",
     "Bike",
     "BikeStatus",

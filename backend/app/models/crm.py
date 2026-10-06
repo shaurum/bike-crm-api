@@ -274,6 +274,95 @@ class ContractTemplate(UUIDMixin, TimestampMixin, Base):
     variables: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Описание переменных для UI")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="Шаблон по умолчанию")
 
+class DocumentKind(str, enum.Enum):
+    CONTRACT_RENTAL = "contract_rental"
+    ACT_HANDOVER = "act_handover"
+    ACT_RETURN = "act_return"
+    MEMO = "memo"
+    SCAN = "scan"
+    OTHER = "other"
+
+
+class DocumentStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ISSUED = "issued"
+    SIGNED = "signed"
+    CANCELLED = "cancelled"
+
+
+class Document(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "document"
+
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("customer.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="Клиент",
+    )
+    lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("lead.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Сделка",
+    )
+    bike_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("bike.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Байк",
+    )
+    kind: Mapped[DocumentKind] = mapped_column(
+        SQLEnum(DocumentKind, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        default=DocumentKind.CONTRACT_RENTAL,
+        nullable=False,
+        comment="Тип документа",
+    )
+    status: Mapped[DocumentStatus] = mapped_column(
+        SQLEnum(DocumentStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        default=DocumentStatus.DRAFT,
+        nullable=False,
+        comment="Статус",
+    )
+    number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    issued_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Дата выдачи"
+    )
+    file_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    original_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    payload: Mapped[dict] = mapped_column(
+        JSON, default={}, nullable=False, comment="Данные на момент формирования"
+    )
+
+    customer: Mapped[Optional["Customer"]] = relationship(lazy="selectin")
+    lead: Mapped[Optional["Lead"]] = relationship(lazy="selectin")
+    bike: Mapped[Optional["Bike"]] = relationship(lazy="selectin")
+
+    __table_args__ = (
+        Index("ix_document_customer", "customer_id"),
+        Index("ix_document_lead", "lead_id"),
+        Index("ix_document_status", "status"),
+        Index("ix_document_kind", "kind"),
+    )
+
+
+class CompanyProfile(UUIDMixin, TimestampMixin, Base):
+    """Реквизиты арендодателя для подстановки в договор."""
+
+    __tablename__ = "company_profile"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Название или ФИО ИП")
+    ogrnip: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="ОГРНИП или ОГРН")
+    inn: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="ИНН")
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    return_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="Адрес возврата")
+    age_restriction: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    deposit_return: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    photo_consent: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+
 class LeadComment(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lead_comment"
 

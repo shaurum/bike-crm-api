@@ -246,3 +246,78 @@ class ContractTemplateResponse(ContractTemplateBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class DocumentGenerateRequest(BaseModel):
+    lead_id: UUID
+    allow_incomplete: bool = False
+
+
+class DocumentCustomerBrief(BaseModel):
+    id: UUID
+    full_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentResponse(BaseModel):
+    id: UUID
+    customer_id: Optional[UUID] = None
+    lead_id: Optional[UUID] = None
+    bike_id: Optional[UUID] = None
+    kind: str
+    status: str
+    number: Optional[str] = None
+    issued_at: Optional[datetime] = None
+    file_url: Optional[str] = None
+    original_name: Optional[str] = None
+    size: Optional[int] = None
+    payload: dict = {}
+    created_at: datetime
+    customer: Optional[DocumentCustomerBrief] = None
+    bike_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentListResponse(BaseModel):
+    items: List[DocumentResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CompanyProfileBase(BaseModel):
+    name: str
+    ogrnip: Optional[str] = None
+    inn: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    return_address: Optional[str] = None
+    age_restriction: Optional[str] = None
+    deposit_return: Optional[str] = None
+    photo_consent: Optional[str] = None
+
+
+class CompanyProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    ogrnip: Optional[str] = None
+    inn: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    return_address: Optional[str] = None
+    age_restriction: Optional[str] = None
+    deposit_return: Optional[str] = None
+    photo_consent: Optional[str] = None
+
+
+class CompanyProfileResponse(CompanyProfileBase):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

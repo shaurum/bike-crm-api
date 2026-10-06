@@ -9,7 +9,7 @@ import asyncio
 from sqlalchemy import select
 
 from app.core.database import async_session_maker
-from app.models import LeadSource, LeadSourceType, PipelineStage, Branch, Bike, BikePrice
+from app.models import LeadSource, LeadSourceType, PipelineStage, Branch, Bike, BikePrice, CompanyProfile
 
 DEFAULT_BRANCH = ("Основной филиал", "Москва, ул. Примерная, 1")
 
@@ -115,6 +115,18 @@ async def seed() -> None:
                         deposit=0,
                     )
                 )
+
+        # Реквизиты арендодателя для договоров
+        company = (
+            await db.execute(select(CompanyProfile).limit(1))
+        ).scalars().first()
+        if not company:
+            db.add(
+                CompanyProfile(
+                    name="ИП Леончук Анна Владимировна",
+                    address="Москва",
+                )
+            )
 
         await db.commit()
 
