@@ -69,6 +69,7 @@ async def _process_avito_webhook(source_id: str, payload: dict):
                     phone=user.get("phone"),
                     email=user.get("email"),
                     msg_id=msg_id,
+                    external_id=str(chat.get("id", "")) or None,
                     meta={"author": msg.get("author", {}), "source_id": source_id},
                     subject=None,
                 )
@@ -305,6 +306,7 @@ async def _ingest(
     phone: str | None = None,
     email: str | None = None,
     msg_id: str | None = None,
+    external_id: str | None = None,
     meta: dict | None = None,
     subject: str | None = None,
 ):
@@ -321,6 +323,7 @@ async def _ingest(
             sender_name=name,
             subject=subject,
             external_msg_id=msg_id,
+            external_id=external_id,
             meta=meta,
         )
     except DuplicateMessage as exc:
@@ -363,4 +366,139 @@ async def _notify_managers_new_lead(lead: Lead, session: AsyncSession):
 
 @shared_task
 def refresh_avito_tokens():
-    logger.info("Checking Avito tokens refresh...")
+    """Продлеваем токен Авито: он живёт 24 часа."""
+    import asyncio
+
+    asyncio.run(_refresh_avito_tokens())
+
+
+async def _refresh_avito_tokens():
+    from app.services import gateway
+    from app.services.avito import AvitoError, load_integration, refresh_access_token
+
+    if gateway.is_configured():
+        # Токенами Авито управляет шлюз — локально не мешаем
+        return
+
+    async with async_session_maker() as session:
+        try:
+            item = await load_integration(session)
+        except AvitoError:
+            return
+        if not (item.secret or {}).get("refresh_token"):
+            return
+        try:
+            await refresh_access_token(session, item)
+        except AvitoError as exc:
+            logger.warning("Avito: не удалось обновить токен: %s", exc)
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def poll_avito_messages(self):
+    """Забираем входящие сообщения из Авито в чаты клиентов."""
+    import asyncio
+
+    asyncio.run(_poll_avito_messages())
+
+
+async def _poll_avito_messages():
+    from app.services import gateway
+    from app.services.avito import (
+        AvitoError,
+        account_user_id,
+        counterparty_id,
+        counterparty_name,
+        list_chats,
+        list_messages,
+        load_integration,
+        message_text,
+    )
+
+    if gateway.is_configured():
+        # Опрос Авито выполняет шлюз, здесь забираем уже готовые события
+        return
+
+    async with async_session_maker() as session:
+        try:
+            item = await load_integration(session)
+        except AvitoError:
+            return
+        if not (item.secret or {}).get("access_token"):
+            return
+
+        try:
+            user_id = account_user_id(item)
+            chats = await list_chats(session, user_id)
+        except AvitoError as exc:
+            logger.warning("Avito: опрос чатов не удался: %s", exc)
+            return
+
+        if not chats:
+            return
+
+        seen = dict((item.config or {}).get("avito_seen") or {})
+        updates: dict[str, int] = {}
+
+        for chat in chats:
+            chat_id = str(chat.get("id") or "")
+            if not chat_id:
+                continue
+            last = chat.get("last_message") or {}
+            if str(last.get("direction") or "") != "in":
+                continue
+            created = int(last.get("created") or 0)
+            if created <= int(seen.get(chat_id) or 0):
+                continue
+
+            try:
+                items = await list_messages(session, user_id, chat_id, limit=50)
+            except AvitoError as exc:
+                logger.warning("Avito: чат %s не прочитан: %s", chat_id, exc)
+                continue
+
+            sender = counterparty_id(chat, user_id) or chat_id
+            name = counterparty_name(chat, user_id)
+            highest = created
+            failed = False
+
+            for msg in items:
+                if str(msg.get("direction") or "") != "in":
+                    continue
+                msg_id = str(msg.get("id") or "")
+                text = message_text(msg)
+                if not msg_id or not text:
+                    continue
+                try:
+                    await _ingest(
+                        session,
+                        channel="avito",
+                        sender=sender,
+                        content=text,
+                        name=name,
+                        msg_id=msg_id,
+                        external_id=chat_id,
+                        meta={"chat_id": chat_id, "author_id": msg.get("author_id")},
+                    )
+                    await session.commit()
+                except Exception as exc:  # noqa: BLE001
+                    await session.rollback()
+                    logger.exception("Avito: не разобрали сообщение %s: %s", msg_id, exc)
+                    failed = True
+                highest = max(highest, int(msg.get("created") or 0))
+
+            if not failed:
+                updates[chat_id] = max(highest, created)
+
+        if not updates:
+            return
+
+        try:
+            fresh = await load_integration(session)
+        except AvitoError:
+            return
+        config = dict(fresh.config or {})
+        seen = dict(config.get("avito_seen") or {})
+        seen.update(updates)
+        config["avito_seen"] = seen
+        fresh.config = config
+        await session.commit()

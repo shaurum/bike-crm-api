@@ -57,8 +57,12 @@ services:
       - REDIS_URL=${REDIS_URL}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GATEWAY_URL=${GATEWAY_URL:-}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-}
       - ENVIRONMENT=${ENVIRONMENT}
       - DEBUG=${DEBUG}
+      - GATEWAY_URL=${GATEWAY_URL:-}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:
@@ -111,6 +115,8 @@ services:
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GATEWAY_URL=${GATEWAY_URL:-}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-}
     volumes:
       - ./backend:/app
       - ./data/uploads:/app/uploads
@@ -142,6 +148,8 @@ services:
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GATEWAY_URL=${GATEWAY_URL:-}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-}
     volumes:
       - ./backend:/app
     healthcheck:

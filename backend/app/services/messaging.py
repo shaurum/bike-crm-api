@@ -153,6 +153,7 @@ async def ingest_inbound(
     sender_name: Optional[str] = None,
     subject: Optional[str] = None,
     external_msg_id: Optional[str] = None,
+    external_id: Optional[str] = None,
     meta: Optional[dict] = None,
 ) -> IngestResult:
     """Принимает входящее сообщение и кладёт его в правильный чат."""
@@ -190,6 +191,7 @@ async def ingest_inbound(
                 customer_id=customer.id,
                 channel=channel,
                 value=value,
+                external_id=external_id,
                 is_primary=True,
                 is_verified=False,
             )
@@ -204,11 +206,14 @@ async def ingest_inbound(
                     customer_id=customer.id,
                     channel=channel,
                     value=value,
+                    external_id=external_id,
                     is_primary=True,
                     is_verified=False,
                 )
             )
             await db.flush()
+        elif external_id and not existing.external_id:
+            existing.external_id = external_id
 
     # Чат живёт отдельно от сделки, создаётся один раз на клиента
     result = await db.execute(

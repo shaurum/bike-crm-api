@@ -358,7 +358,39 @@ async def _deliver(
             logger_warning(str(exc))
             return f"Telegram не отправил сообщение: {exc}"
 
-    if channel in {"avito", "vk"}:
+    if channel == "avito":
+        from app.services import gateway
+
+        if not recipient.external_id:
+            return (
+                "Не найден идентификатор диалога Авито: "
+                "дождитесь входящего сообщения в этом чате, чтобы ответить"
+            )
+
+        if gateway.is_configured():
+            try:
+                await gateway.enqueue_outbound(str(recipient.external_id), content)
+                return None
+            except gateway.GatewayError as exc:
+                return f"Шлюз не принял сообщение: {exc}"
+
+        from app.services.avito import (
+            AvitoError,
+            account_user_id,
+            load_integration,
+            send_text,
+        )
+
+        try:
+            item = await load_integration(db)
+            user_id = account_user_id(item)
+            await send_text(db, user_id, str(recipient.external_id), content)
+            return None
+        except AvitoError as exc:
+            logger_warning(str(exc))
+            return f"Ошибка отправки в Авито: {exc}"
+
+    if channel == "vk":
         return f"Отправка в канал «{channel}» пока не настроена — сообщение сохранено"
 
     return None

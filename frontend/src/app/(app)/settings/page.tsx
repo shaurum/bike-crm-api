@@ -770,6 +770,219 @@ function EmailIntegration() {
   );
 }
 
+interface AvitoSettingsResponse {
+  is_enabled: boolean;
+  config: { redirect_uri: string | null; scopes: string };
+  client_id_set: boolean;
+  client_secret_set: boolean;
+  connected: boolean;
+  user_id: number | null;
+  account_name: string | null;
+  account_phone: string | null;
+  token_expires_at: string | null;
+  connected_at: string | null;
+  ready_to_connect: boolean;
+}
+
+function AvitoIntegration() {
+  const queryClient = useQueryClient();
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [redirectUri, setRedirectUri] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["settings", "integrations", "avito"],
+    queryFn: async () => {
+      const { data } = await api.get<AvitoSettingsResponse>(
+        "/settings/integrations/avito"
+      );
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    setClientId("");
+    setClientSecret("");
+    setRedirectUri(data.config.redirect_uri || "");
+  }, [data]);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["settings"] });
+
+  const onError = (error: { response?: { data?: { detail?: string } } }) => {
+    toast({
+      title: "Ошибка",
+      description: error.response?.data?.detail || "Не удалось выполнить действие",
+    });
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        config: {
+          redirect_uri: redirectUri || null,
+          scopes: data?.config.scopes,
+        },
+      };
+      if (clientId) payload.client_id = clientId;
+      if (clientSecret) payload.client_secret = clientSecret;
+      const { data: saved } = await api.patch<AvitoSettingsResponse>(
+        "/settings/integrations/avito",
+        payload
+      );
+      return saved;
+    },
+    onSuccess: () => {
+      setClientId("");
+      setClientSecret("");
+      toast({ title: "Реквизиты приложения Авито сохранены" });
+      invalidate();
+    },
+    onError,
+  });
+
+  const connect = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ url: string }>(
+        "/settings/integrations/avito/connect-url"
+      );
+      return data;
+    },
+    onSuccess: (payload) => {
+      window.location.href = payload.url;
+    },
+    onError,
+  });
+
+  const disconnect = useMutation({
+    mutationFn: async () => {
+      await api.post("/settings/integrations/avito/disconnect");
+    },
+    onSuccess: () => {
+      toast({ title: "Доступ к Авито отозван" });
+      invalidate();
+    },
+    onError,
+  });
+
+  if (isLoading || !data) {
+    return <p className="text-sm text-muted-foreground">Загрузка настроек Авито…</p>;
+  }
+
+  const accountLabel =
+    data.account_name || data.account_phone || (data.user_id ? `id ${data.user_id}` : "");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Авито</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Переписка с покупателями из объявлений приходит в раздел «Сообщения»,
+            отвечать можно оттуда же.
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-xs",
+            data.connected
+              ? "bg-green-100 text-green-800"
+              : "bg-amber-50 text-amber-700"
+          )}
+        >
+          {data.connected ? "Подключено" : "Не подключено"}
+        </span>
+      </div>
+
+      {data.connected && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-900">
+          Авторизован аккаунт{accountLabel ? ` «${accountLabel}»` : ""}.
+          Входящие сообщения подхватываются автоматически, ответы уходят из чата.
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-xs text-muted-foreground">client_id</span>
+          <input
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            placeholder={data.client_id_set ? "сохранено" : "из кабинета разработчика"}
+            autoComplete="off"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs text-muted-foreground">client_secret</span>
+          <input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder={data.client_secret_set ? "сохранён" : "из кабинета разработчика"}
+            autoComplete="off"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </label>
+        <label className="block space-y-1 sm:col-span-2">
+          <span className="text-xs text-muted-foreground">
+            Redirect URI — должен совпадать с указанным при регистрации приложения
+          </span>
+          <input
+            value={redirectUri}
+            onChange={(e) => setRedirectUri(e.target.value)}
+            placeholder="https://ваш-домен/settings/avito/callback"
+            autoComplete="off"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <span className="block text-[11px] text-amber-600">
+            Авито принимает только адреса по https — локальный http://localhost не подойдёт.
+          </span>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+        >
+          <Save className="h-4 w-4" />
+          Сохранить
+        </button>
+        <button
+          onClick={() => connect.mutate()}
+          disabled={!data.ready_to_connect || connect.isPending}
+          title={
+            data.ready_to_connect
+              ? "Открыть страницу подтверждения в Авито"
+              : "Сначала сохраните client_id, client_secret и redirect_uri"
+          }
+          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plug className="h-4 w-4" />
+          {data.connected ? "Переподключить" : "Подключить Авито"}
+        </button>
+        {data.connected && (
+          <button
+            onClick={() => disconnect.mutate()}
+            disabled={disconnect.isPending}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+          >
+            <Power className="h-4 w-4" />
+            Отключить
+          </button>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Реквизиты выдаются в кабинете разработчика Авито после регистрации приложения
+        и письма с ключами. Для мессенджера нужен тариф «Расширенный» или «Максимальный».
+      </p>
+    </div>
+  );
+}
+
 const PLANNED: Record<string, string> = {
   telegram: "Уведомления о новых заявках в чат команды",
   avito: "Публикация байков и приём откликов",
@@ -790,7 +1003,9 @@ function IntegrationsTab() {
     return <p className="text-sm text-muted-foreground">Загрузка интеграций…</p>;
   }
 
-  const others = (data || []).filter((item) => item.name !== "email");
+  const others = (data || []).filter(
+    (item) => item.name !== "email" && item.name !== "avito"
+  );
 
   return (
     <div className="space-y-6">
@@ -803,6 +1018,10 @@ function IntegrationsTab() {
 
       <div className="rounded-lg border p-4">
         <EmailIntegration />
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <AvitoIntegration />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -828,6 +1047,13 @@ function IntegrationsTab() {
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>("general");
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted === "general" || wanted === "account" || wanted === "integrations") {
+      setTab(wanted);
+    }
+  }, []);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">

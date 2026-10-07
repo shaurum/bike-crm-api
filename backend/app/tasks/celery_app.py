@@ -10,6 +10,7 @@ celery_app = Celery(
         "app.tasks.notifications",
         "app.tasks.contracts",
         "app.tasks.maintenance",
+        "app.tasks.sync_gateway",
     ],
 )
 
@@ -29,6 +30,11 @@ celery_app.conf.update(
             "task": "app.tasks.webhooks.refresh_avito_tokens",
             "schedule": 21600.0,
         },
+        "poll-avito-messages": {
+            "task": "app.tasks.webhooks.poll_avito_messages",
+            # Часто не опрашиваем: у Авито свои лимиты на методы
+            "schedule": 60.0,
+        },
         "check-overdue-tasks": {
             "task": "app.tasks.notifications.check_overdue_tasks",
             "schedule": 900.0,
@@ -37,6 +43,11 @@ celery_app.conf.update(
             "task": "app.tasks.webhooks.poll_email_inbox",
             # Чем чаще смотрим ящик, тем быстрее письмо доходит до чата
             "schedule": 20.0,
+        },
+        "sync-gateway-events": {
+            "task": "app.tasks.sync_gateway.sync_gateway_events",
+            # Шлюз тянет опрос Авито на себя, CRM забирает готовые события
+            "schedule": 10.0,
         },
         "daily-backup": {
             "task": "app.tasks.maintenance.daily_backup",

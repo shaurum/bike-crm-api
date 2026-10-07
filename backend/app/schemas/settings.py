@@ -87,6 +87,56 @@ class EmailTestRequest(BaseModel):
     subject: Optional[str] = None
 
 
+class AvitoSettings(BaseModel):
+    """Адрес возврата и права приложения Авито."""
+
+    redirect_uri: Optional[str] = Field(
+        None, description="Redirect URI из кабинета разработчика; только https"
+    )
+    scopes: str = Field(
+        "messenger:read,messenger:write,user:read",
+        description="Права, которые запрашиваем у пользователя",
+    )
+
+
+class AvitoSettingsUpdate(BaseModel):
+    config: AvitoSettings
+    client_id: Optional[str] = Field(
+        None, description="client_id приложения; null — не менять"
+    )
+    client_secret: Optional[str] = Field(
+        None, description="client_secret приложения; null — не менять"
+    )
+
+
+class AvitoSettingsResponse(BaseModel):
+    """Ответ с настройками Авито. Секреты — только признаки."""
+
+    is_enabled: bool
+    config: AvitoSettings
+    client_id_set: bool = False
+    client_secret_set: bool = False
+    connected: bool = Field(False, description="Есть токен доступа")
+    user_id: Optional[int] = None
+    account_name: Optional[str] = None
+    account_phone: Optional[str] = None
+    token_expires_at: Optional[str] = None
+    connected_at: Optional[str] = None
+    ready_to_connect: bool = Field(
+        False, description="Заполнены client_id, client_secret и redirect_uri"
+    )
+    updated_at: Optional[datetime] = None
+
+
+class AvitoCallbackRequest(BaseModel):
+    code: str = Field(..., description="Код авторизации, который вернул Авито")
+
+
+class AvitoConnectUrlResponse(BaseModel):
+    url: str
+    redirect_uri: str
+
+
 class CompanyProfileUpdate(BaseModel):
     """Реквизиты арендодателя для договоров."""
 

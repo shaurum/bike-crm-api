@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 backend/.venv/
-backend/__pycache__/
-backend/*.pyc
+__pycache__/
+*.py[cod]
 backend/.pytest_cache/
 backend/.coverage
 backend/htmlcov/
@@ -45,6 +45,9 @@ docker-compose.override.yml
 
 # SSL certificates
 nginx/ssl/
+
+# Gateway secrets (сертификаты и ключи шлюза)
+gateway/certs/
 
 # Temporary
 tmp/

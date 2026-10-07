@@ -44,6 +44,11 @@ class ContactPoint(Base):
         String(255), nullable=False, comment="zzz@ya.ru, +79001234567, @login"
     )
     label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    external_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Внешний id диалога у провайдера, например chat_id в Авито",
+    )
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -1,0 +1,17 @@
+services:
+  gateway:
+    build: .
+    container_name: integration-gateway
+    restart: unless-stopped
+    environment:
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN}
+      GATEWAY_DB: /data/gateway.db
+      AVITO_CONFIG: /data/avito.json
+      AVITO_POLL_INTERVAL: ${AVITO_POLL_INTERVAL:-60}
+      OUTBOX_INTERVAL: ${OUTBOX_INTERVAL:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/data
+      - ./certs:/certs:ro
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8443}:8443"
