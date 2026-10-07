@@ -71,6 +71,17 @@ interface Lead {
   stage_id: string | null;
   amount?: number | null;
   source?: { name: string; type: string } | null;
+  messages?: { direction: string; created_at: string }[];
+}
+
+/** Последнее сообщение по сделке пришло от клиента — мы ещё не ответили. */
+function isAwaitingReply(lead: Lead): boolean {
+  const messages = lead.messages ?? [];
+  if (messages.length === 0) return false;
+  const last = messages.reduce((a, b) =>
+    new Date(a.created_at).getTime() > new Date(b.created_at).getTime() ? a : b
+  );
+  return last.direction === "inbound";
 }
 
 interface Source {
@@ -244,6 +255,7 @@ function LeadMeta({ lead }: { lead: Lead }) {
 }
 
 function LeadCardBody({ lead }: { lead: Lead }) {
+  const awaitingReply = isAwaitingReply(lead);
   return (
     <>
       <div className="flex items-start justify-between gap-2">
@@ -256,6 +268,12 @@ function LeadCardBody({ lead }: { lead: Lead }) {
           </Badge>
         )}
       </div>
+
+      {awaitingReply && (
+        <span className="mt-1.5 inline-flex w-fit items-center rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+          Ждёт ответа
+        </span>
+      )}
 
       
       <LeadMeta lead={lead} />
