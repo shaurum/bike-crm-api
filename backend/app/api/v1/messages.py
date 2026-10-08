@@ -508,6 +508,52 @@ async def unarchive_conversation(
 # --- Контактные точки ---
 
 
+async def _duplicate_info(
+    db: AsyncSession,
+    channel: str,
+    value: str,
+    own_customer_id: UUID,
+    exclude_contact_id: Optional[UUID] = None,
+) -> Optional[dict]:
+    """Дубль адреса: сначала ищем у того же клиента, затем у других клиентов."""
+    stmt = (
+        select(ContactPoint, Customer)
+        .join(Customer, ContactPoint.customer_id == Customer.id)
+        .where(ContactPoint.channel == channel, ContactPoint.value == value)
+    )
+    if exclude_contact_id:
+        stmt = stmt.where(ContactPoint.id != exclude_contact_id)
+    rows = (await db.execute(stmt)).all()
+
+    matched = next(
+        (r for r in rows if r[0].customer_id == own_customer_id), None
+    )
+    if matched:
+        cp, cust = matched
+        return {
+            "code": "duplicate",
+            "scope": "same",
+            "contact_id": str(cp.id),
+            "customer_id": str(cust.id),
+            "customer_name": cust.full_name,
+            "is_primary": cp.is_primary,
+            "value": value,
+        }
+
+    if rows:
+        cp, cust = rows[0]
+        return {
+            "code": "duplicate",
+            "scope": "other",
+            "contact_id": str(cp.id),
+            "customer_id": str(cust.id),
+            "customer_name": cust.full_name,
+            "is_primary": cp.is_primary,
+            "value": value,
+        }
+    return None
+
+
 @router.get(
     "/contacts/{customer_id}", response_model=List[ContactPointResponse]
 )
@@ -539,17 +585,9 @@ async def add_contact(
     channel = payload.channel.strip().lower()
     value = normalize_value(channel, payload.value)
 
-    existing = await db.execute(
-        select(ContactPoint).where(
-            ContactPoint.customer_id == customer_id,
-            ContactPoint.channel == channel,
-            ContactPoint.value == value,
-        )
-    )
-    if existing.scalars().first():
-        raise HTTPException(
-            status_code=409, detail="Такой контакт у клиента уже есть"
-        )
+    dup = await _duplicate_info(db, channel, value, customer_id)
+    if dup and (dup["scope"] == "same" or not payload.force):
+        raise HTTPException(status_code=409, detail=dup)
 
     contact = ContactPoint(
         customer_id=customer_id,
@@ -581,18 +619,15 @@ async def update_contact(
     if payload.value is not None and payload.value.strip():
         new_value = normalize_value(contact.channel, payload.value)
         if new_value != contact.value:
-            duplicate = await db.execute(
-                select(ContactPoint).where(
-                    ContactPoint.customer_id == contact.customer_id,
-                    ContactPoint.channel == contact.channel,
-                    ContactPoint.value == new_value,
-                    ContactPoint.id != contact.id,
-                )
+            dup = await _duplicate_info(
+                db,
+                contact.channel,
+                new_value,
+                contact.customer_id,
+                exclude_contact_id=contact.id,
             )
-            if duplicate.scalars().first():
-                raise HTTPException(
-                    status_code=409, detail="Такой контакт у клиента уже есть"
-                )
+            if dup and (dup["scope"] == "same" or not payload.force):
+                raise HTTPException(status_code=409, detail=dup)
             contact.value = new_value
 
     if payload.label is not None:
@@ -625,17 +660,6 @@ async def delete_contact(
     contact = await db.get(ContactPoint, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Контакт не найден")
-
-    remaining = await db.execute(
-        select(ContactPoint).where(
-            ContactPoint.customer_id == contact.customer_id,
-            ContactPoint.id != contact.id,
-        )
-    )
-    if not remaining.scalars().first():
-        raise HTTPException(
-            status_code=400, detail="Нельзя удалить последний способ связи"
-        )
 
     await db.delete(contact)
     await db.commit()

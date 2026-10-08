@@ -267,6 +267,24 @@ function contactPlaceholder(channel: string): string {
   }
 }
 
+function normContactValue(channel: string, v: string): string {
+  const raw = v.trim().toLowerCase();
+  if (channel === "phone") return raw.replace(/[^\d+]/g, "");
+  if (channel === "telegram") return raw.replace(/^@/, "");
+  return raw;
+}
+
+type DupDetail = {
+  code: "duplicate";
+  scope: "same" | "other";
+  contact_id: string;
+  customer_id: string;
+  customer_name: string;
+  is_primary: boolean;
+  value: string;
+  action?: "add" | "edit";
+};
+
 function ContactPointsSection({
   customerId,
   reloadKey,
@@ -285,6 +303,22 @@ function ContactPointsSection({
   const [editing, setEditing] = useState<ContactPoint | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editLabel, setEditLabel] = useState("");
+  const [dup, setDup] = useState<DupDetail | null>(null);
+
+  const handleDup = (err: any, action: "add" | "edit") => {
+    const d = err.response?.data?.detail;
+    if (d && d.code === "duplicate") {
+      setDup({ ...d, action });
+      return;
+    }
+    setError(
+      typeof d === "string"
+        ? d
+        : action === "add"
+          ? "Не удалось добавить контакт"
+          : "Не удалось изменить контакт"
+    );
+  };
 
   const load = useCallback(async () => {
     try {
@@ -302,7 +336,7 @@ function ContactPointsSection({
     if (customerId) load();
   }, [customerId, reloadKey, load]);
 
-  const add = async () => {
+  const add = async (force = false) => {
     if (!value.trim()) return;
     setBusy(true);
     setError("");
@@ -311,13 +345,15 @@ function ContactPointsSection({
         channel,
         value: value.trim(),
         label: label.trim() || null,
+        force,
       });
       setValue("");
       setLabel("");
       setAdding(false);
+      setDup(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось добавить контакт");
+      handleDup(err, "add");
     } finally {
       setBusy(false);
     }
@@ -341,9 +377,10 @@ function ContactPointsSection({
     setEditValue(contact.value);
     setEditLabel(contact.label || "");
     setAdding(false);
+    setDup(null);
   };
 
-  const saveEdit = async () => {
+  const saveEdit = async (force = false) => {
     if (!editing || !editValue.trim()) return;
     setBusy(true);
     setError("");
@@ -351,13 +388,75 @@ function ContactPointsSection({
       await api.patch(`/conversations/contacts/${editing.id}`, {
         value: editValue.trim(),
         label: editLabel.trim() || null,
+        force,
       });
       setEditing(null);
+      setDup(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось изменить контакт");
+      handleDup(err, "edit");
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Объединение: удаляем дубль, повторяем операцию, сохраняем «основной»
+  const mergeDuplicate = async () => {
+    if (!dup) return;
+    setBusy(true);
+    setError("");
+    try {
+      const wasPrimary = dup.is_primary;
+      await api.delete(`/conversations/contacts/${dup.contact_id}`);
+      if (dup.action === "add") {
+        const res = await api.post<ContactPoint>(
+          `/conversations/contacts/${customerId}`,
+          {
+            channel,
+            value: value.trim(),
+            label: label.trim() || null,
+          }
+        );
+        if (wasPrimary) {
+          await api.patch(`/conversations/contacts/${res.data.id}`, {
+            is_primary: true,
+          });
+        }
+        setValue("");
+        setLabel("");
+        setAdding(false);
+      } else if (editing) {
+        const res = await api.patch<ContactPoint>(
+          `/conversations/contacts/${editing.id}`,
+          {
+            value: editValue.trim(),
+            label: editLabel.trim() || null,
+          }
+        );
+        if (wasPrimary && !editing.is_primary) {
+          await api.patch(`/conversations/contacts/${res.data.id}`, {
+            is_primary: true,
+          });
+        }
+        setEditing(null);
+      }
+      setDup(null);
+      await load();
+    } catch (err: any) {
+      handleDup(err, dup.action || "add");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forceAnyway = async () => {
+    if (!dup) return;
+    const action = dup.action;
+    setDup(null);
+    if (action === "edit") {
+      await saveEdit(true);
+    } else {
+      await add(true);
     }
   };
 
@@ -377,6 +476,29 @@ function ContactPointsSection({
     }
   };
 
+  const liveDupTarget = (() => {
+    if (editing) {
+      const v = normContactValue(editing.channel, editValue);
+      if (!v) return null;
+      return (
+        contacts.find(
+          (c) =>
+            c.id !== editing.id &&
+            c.channel === editing.channel &&
+            normContactValue(c.channel, c.value) === v
+        ) || null
+      );
+    }
+    const v = normContactValue(channel, value);
+    if (!v) return null;
+    return (
+      contacts.find(
+        (c) =>
+          c.channel === channel && normContactValue(c.channel, c.value) === v
+      ) || null
+    );
+  })();
+
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div className="flex items-center justify-between">
@@ -385,6 +507,7 @@ function ContactPointsSection({
           type="button"
           onClick={() => {
             setEditing(null);
+            setDup(null);
             setAdding((v) => !v);
           }}
           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
@@ -395,6 +518,60 @@ function ContactPointsSection({
       </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {dup && (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+          {dup.scope === "same" ? (
+            <>
+              <p>
+                Такой контакт у клиента уже есть. Объединить: дубль удалим,
+                оставим {dup.action === "add" ? "новый" : "изменённый"} контакт.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={mergeDuplicate}
+                  disabled={busy}
+                  className="rounded-md bg-amber-600 px-2.5 py-1 text-white disabled:opacity-50"
+                >
+                  Объединить
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDup(null)}
+                  className="rounded-md border border-amber-300 bg-white px-2.5 py-1"
+                >
+                  Отмена
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>
+                Контакт «{dup.value}» уже есть у клиента «{dup.customer_name}
+                ». Добавить всё равно?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={forceAnyway}
+                  disabled={busy}
+                  className="rounded-md bg-amber-600 px-2.5 py-1 text-white disabled:opacity-50"
+                >
+                  Всё равно {dup.action === "add" ? "добавить" : "сохранить"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDup(null)}
+                  className="rounded-md border border-amber-300 bg-white px-2.5 py-1"
+                >
+                  Отмена
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {loaded && contacts.length === 0 && !adding && (
         <p className="text-xs text-muted-foreground">
@@ -423,11 +600,17 @@ function ContactPointsSection({
                     placeholder="Подпись (необязательно)"
                     className="w-full rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
+                  {liveDupTarget && (
+                    <p className="text-[11px] text-amber-700">
+                      Такой контакт уже есть — при сохранении предложим
+                      объединить
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={saveEdit}
+                    onClick={() => saveEdit()}
                     disabled={!editValue.trim() || busy}
                     className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:opacity-50"
                   >
@@ -435,7 +618,10 @@ function ContactPointsSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditing(null)}
+                    onClick={() => {
+                      setEditing(null);
+                      setDup(null);
+                    }}
                     className="rounded-md border px-2.5 py-1 text-xs"
                   >
                     Отмена
@@ -520,10 +706,15 @@ function ContactPointsSection({
             placeholder="Подпись (необязательно)"
             className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
+          {liveDupTarget && (
+            <p className="text-[11px] text-amber-700">
+              Такой контакт уже есть — при сохранении предложим объединить
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={add}
+              onClick={() => add()}
               disabled={!value.trim() || busy}
               className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
             >
@@ -531,7 +722,10 @@ function ContactPointsSection({
             </button>
             <button
               type="button"
-              onClick={() => setAdding(false)}
+              onClick={() => {
+                setAdding(false);
+                setDup(null);
+              }}
               className="rounded-md border px-3 py-1.5 text-sm"
             >
               Отмена

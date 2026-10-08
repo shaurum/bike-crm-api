@@ -23,6 +23,7 @@ class ContactPointCreate(BaseModel):
     value: str
     label: Optional[str] = None
     is_primary: bool = False
+    force: bool = False  # игнорировать дубль у другого клиента
 
     @field_validator("value")
     @classmethod
@@ -36,6 +37,7 @@ class ContactPointUpdate(BaseModel):
     value: Optional[str] = None
     label: Optional[str] = None
     is_primary: Optional[bool] = None
+    force: bool = False  # игнорировать дубль у другого клиента
 
 
 class ConversationListResponse(BaseModel):
