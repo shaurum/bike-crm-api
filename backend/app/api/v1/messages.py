@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
@@ -228,6 +228,29 @@ async def get_conversation(
     )
 
 
+@router.post("/read-all")
+async def mark_all_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Помечаем все диалоги прочитанными."""
+    await db.execute(
+        update(Conversation)
+        .where(Conversation.unread_count > 0)
+        .values(unread_count=0)
+    )
+    await db.execute(
+        update(LeadMessage)
+        .where(
+            LeadMessage.direction == "inbound",
+            LeadMessage.is_read == False,  # noqa: E712
+        )
+        .values(is_read=True)
+    )
+    await db.commit()
+    return {"ok": True}
+
+
 @router.post("/{conversation_id}/read")
 async def mark_read(
     conversation_id: UUID,
@@ -362,9 +385,27 @@ async def _deliver(
         from app.services import gateway
 
         if gateway.is_configured():
-            address = str(recipient.external_id or recipient.value or "")
+            address = str(recipient.external_id or "")
             if not address:
-                return "Не найден адрес чата Telegram в контакте клиента"
+                value = str(recipient.value or "")
+                if value.lstrip("-").isdigit():
+                    address = value
+                elif value:
+                    try:
+                        address = (
+                            await gateway.resolve_telegram(value.lstrip("@")) or ""
+                        )
+                    except gateway.GatewayError as exc:
+                        logger_warning(str(exc))
+                        address = ""
+            if not address:
+                return (
+                    "Открытого чата в Telegram нет: бот не может написать первым — "
+                    "попросите клиента отправить боту любое сообщение (/start), "
+                    "после этого доставка заработает"
+                )
+            if recipient.external_id != address:
+                recipient.external_id = address
             try:
                 await gateway.enqueue_outbound(address, content, source="telegram")
                 return None
@@ -374,8 +415,11 @@ async def _deliver(
         token = await _integration_token(db, "telegram")
         if not token:
             return "Telegram не подключён — сообщение сохранено в истории"
+        address = str(recipient.value or "")
+        if address and not address.lstrip("-").isdigit():
+            address = "@" + address.lstrip("@")
         try:
-            await _send_telegram(token, recipient.value, content)
+            await _send_telegram(token, address, content)
             return None
         except Exception as exc:  # noqa: BLE001
             logger_warning(str(exc))

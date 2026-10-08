@@ -116,6 +116,7 @@ export const adminUsersApi = {
     api.patch(`/users/${id}`, data),
   resetPassword: (id: string, newPassword: string) =>
     api.post(`/users/${id}/password`, { new_password: newPassword }),
+  remove: (id: string) => api.delete(`/users/${id}`),
 };
 
 /** Пригласительные ссылки — админ создаёт, новичок регистрируется по токену. */
@@ -302,13 +303,18 @@ export const tasksApi = {
     size?: number;
     status?: string;
     type?: string;
+    priority?: string;
     assignee_id?: string;
+    overdue?: boolean;
+    q?: string;
     related_bike_id?: string;
     related_booking_id?: string;
   }) => api.get("/tasks", { params }),
   get: (id: string) => api.get(`/tasks/${id}`),
-  updateStatus: (id: string, status: string) => api.patch(`/tasks/${id}/status`, null, { params: { status } }),
   create: (data: any) => api.post("/tasks", data),
+  update: (id: string, data: any) => api.patch(`/tasks/${id}`, data),
+  updateStatus: (id: string, status: string) => api.patch(`/tasks/${id}/status`, null, { params: { status } }),
+  remove: (id: string) => api.delete(`/tasks/${id}`),
 };
 
 export const webhooksApi = {

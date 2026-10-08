@@ -306,6 +306,7 @@ async def poll_telegram() -> None:
                 text=text,
                 sender=str(user.get("id") or chat_id),
                 sender_name=telegram.sender_name(message),
+                username=user.get("username") or None,
                 occurred_at=telegram.iso_from_unix(message.get("date")),
             )
         except Exception:  # noqa: BLE001
@@ -518,6 +519,13 @@ async def events(
 ) -> dict[str, Any]:
     items = db.pull_inbound(connection, after, limit)
     return {"events": items, "cursor": items[-1]["id"] if items else after}
+
+
+@app.get("/telegram/resolve", dependencies=[Depends(require_token)])
+async def telegram_resolve(username: str = Query(..., min_length=1)) -> dict[str, Any]:
+    """Есть ли открытый чат с этим ником (пользователь писал боту)."""
+    chat_id = db.resolve_chat(connection, "telegram", username)
+    return {"found": bool(chat_id), "chat_id": chat_id}
 
 
 @app.post("/outbox", dependencies=[Depends(require_token)])

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS event (
     chat_id TEXT NOT NULL,
     sender TEXT,
     sender_name TEXT,
+    username TEXT,
     text TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -47,7 +48,16 @@ def connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Лёгкие миграции существующей базы шлюза."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(event)")}
+    if "username" not in columns:
+        conn.execute("ALTER TABLE event ADD COLUMN username TEXT")
+        conn.commit()
 
 
 def _now() -> str:
@@ -63,6 +73,7 @@ def add_inbound(
     text: str,
     sender: Optional[str] = None,
     sender_name: Optional[str] = None,
+    username: Optional[str] = None,
     occurred_at: Optional[str] = None,
 ) -> Optional[int]:
     """Кладём входящее событие. None — уже было, дубль."""
@@ -71,8 +82,8 @@ def add_inbound(
             """
             INSERT INTO event (
                 source, direction, external_id, chat_id, sender, sender_name,
-                text, occurred_at, status, updated_at
-            ) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?)
+                username, text, occurred_at, status, updated_at
+            ) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source,
@@ -80,6 +91,7 @@ def add_inbound(
                 chat_id,
                 sender,
                 sender_name,
+                username,
                 text,
                 occurred_at or _now(),
                 INBOUND_PENDING,
@@ -91,6 +103,34 @@ def add_inbound(
     except sqlite3.IntegrityError:
         conn.rollback()
         return None
+
+
+def resolve_chat(
+    conn: sqlite3.Connection, source: str, username: str
+) -> Optional[str]:
+    """Последний открытый чат по нику пользователя (или по числовому id)."""
+    key = (username or "").strip().lstrip("@")
+    if not key:
+        return None
+    row = conn.execute(
+        """
+        SELECT chat_id FROM event
+        WHERE source = ? AND direction = 'inbound'
+          AND username IS NOT NULL AND username = ? COLLATE NOCASE
+        ORDER BY id DESC LIMIT 1
+        """,
+        (source, key),
+    ).fetchone()
+    if row is None and key.lstrip("-").isdigit():
+        row = conn.execute(
+            """
+            SELECT chat_id FROM event
+            WHERE source = ? AND direction = 'inbound' AND chat_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (source, key),
+        ).fetchone()
+    return row["chat_id"] if row else None
 
 
 def pull_inbound(conn: sqlite3.Connection, after_id: int, limit: int) -> list[dict[str, Any]]:

@@ -6,6 +6,7 @@ from sqlalchemy import String, Text, Integer, Float, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
+from app.models.crm import Task
 
 
 class BikeStatus(str, enum.Enum):
@@ -137,7 +138,11 @@ class User(UUIDMixin, TimestampMixin, Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     assigned_leads: Mapped[List["Lead"]] = relationship(back_populates="assigned_to", lazy="selectin")
-    assigned_tasks: Mapped[List["Task"]] = relationship(back_populates="assignee", lazy="selectin")
+    assigned_tasks: Mapped[List["Task"]] = relationship(
+        back_populates="assignee",
+        lazy="selectin",
+        foreign_keys=[Task.assignee_id],
+    )
 
     __table_args__ = (
         Index("ix_user_email", "email"),

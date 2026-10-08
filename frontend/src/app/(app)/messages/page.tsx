@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
+  CheckCheck,
   Lock,
   Plus,
   RotateCw,
   Search,
   Send,
+  Trash2,
   Unlock,
   User,
 } from "lucide-react";
@@ -87,6 +89,9 @@ const DEAL_LABELS: Record<string, string> = {
   none: "Нет сделки",
 };
 
+/** Каналы, в которые реально можно отправить (СМС и WhatsApp не подключены). */
+const SENDABLE_CHANNELS = new Set(["email", "telegram", "vk", "avito"]);
+
 function formatTime(value: string | null): string {
   if (!value) return "";
   const date = new Date(value);
@@ -136,12 +141,14 @@ function ConversationList({
   archived,
   selectedId,
   onSelect,
+  onMarkRead,
 }: {
   search: string;
   filter: string;
   archived: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onMarkRead: (id: string) => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["conversations", search, filter, archived],
@@ -176,11 +183,16 @@ function ConversationList({
   return (
     <div className="divide-y">
       {data.map((item) => (
-        <button
+        <div
           key={item.id}
+          role="button"
+          tabIndex={0}
           onClick={() => onSelect(item.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSelect(item.id);
+          }}
           className={cn(
-            "block w-full border-l-2 px-4 py-3 text-left transition-colors hover:bg-muted/50",
+            "block w-full cursor-pointer border-l-2 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selectedId === item.id
               ? "border-primary bg-muted"
               : item.unread_count > 0
@@ -225,12 +237,25 @@ function ConversationList({
               {item.preview || "Нет сообщений"}
             </p>
             {item.unread_count > 0 && (
-              <span className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground ring-2 ring-background">
-                {item.unread_count}
-              </span>
+              <div className="mt-0.5 flex shrink-0 items-center gap-1">
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground ring-2 ring-background">
+                  {item.unread_count}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMarkRead(item.id);
+                  }}
+                  title="Отметить прочитанным"
+                  className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
           </div>
-        </button>
+        </div>
       ))}
     </div>
   );
@@ -267,10 +292,31 @@ function ContactsPanel({
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
+    onError: (error: { response?: { data?: { detail?: unknown } } }) => {
+      const detail = error.response?.data?.detail;
       toast({
         title: "Не удалось добавить",
-        description: error.response?.data?.detail || "Ошибка сохранения",
+        description:
+          typeof detail === "string" ? detail : "Ошибка сохранения",
+      });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/conversations/contacts/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Контакт удалён" });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+    onError: (error: { response?: { data?: { detail?: unknown } } }) => {
+      const detail = error.response?.data?.detail;
+      toast({
+        title: "Не удалось удалить",
+        description:
+          typeof detail === "string" ? detail : "Ошибка удаления",
       });
     },
   });
@@ -303,11 +349,22 @@ function ContactsPanel({
                 {contact.label ? ` · ${contact.label}` : ""}
               </p>
             </div>
-            {contact.is_primary && (
-              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                основной
-              </span>
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {contact.is_primary && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  основной
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => remove.mutate(contact.id)}
+                disabled={remove.isPending}
+                title="Удалить контакт"
+                className="flex h-6 w-6 items-center justify-center rounded text-gray-300 hover:bg-red-50 hover:text-red-600"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </li>
         ))}
         {contacts.length === 0 && (
@@ -378,11 +435,20 @@ function Thread({
     const seen = new Set<string>();
     const out: ContactPoint[] = [];
     for (const contact of conversation.contacts) {
+      if (!SENDABLE_CHANNELS.has(contact.channel)) continue;
       if (seen.has(contact.channel)) continue;
       seen.add(contact.channel);
       out.push(contact);
     }
     return out;
+  }, [conversation.contacts]);
+
+  const hiddenByChannel = useMemo(() => {
+    const hidden = new Set<string>();
+    for (const contact of conversation.contacts) {
+      if (!SENDABLE_CHANNELS.has(contact.channel)) hidden.add(contact.channel);
+    }
+    return hidden;
   }, [conversation.contacts]);
 
   useEffect(() => {
@@ -398,20 +464,28 @@ function Thread({
 
   const send = useMutation({
     mutationFn: async () => {
-      await api.post(`/conversations/${conversation.id}/messages`, {
-        channel,
-        content: text,
-      });
+      const { data } = await api.post<{ ok: boolean; note?: string | null }>(
+        `/conversations/${conversation.id}/messages`,
+        {
+          channel,
+          content: text,
+        }
+      );
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       setText("");
+      if (res?.note) {
+        toast({ title: "Не доставлено", description: res.note });
+      }
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       queryClient.invalidateQueries({ queryKey: ["conversation", conversation.id] });
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
+    onError: (error: { response?: { data?: { detail?: unknown } } }) => {
+      const detail = error.response?.data?.detail;
       toast({
         title: "Не удалось отправить",
-        description: error.response?.data?.detail || "Ошибка отправки",
+        description: typeof detail === "string" ? detail : "Ошибка отправки",
       });
     },
   });
@@ -526,7 +600,16 @@ function Thread({
             Ответить
           </button>
         </div>
-        {sendable.length === 0 && (
+        {sendable.length === 0 && hiddenByChannel.size > 0 && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Отправлять можно в почту, Telegram, ВКонтакте и Авито — по
+            {Array.from(hiddenByChannel)
+              .map((c) => ` «${CHANNEL_LABELS[c] || c}»`)
+              .join(", ")}{" "}
+            отправка недоступна
+          </p>
+        )}
+        {sendable.length === 0 && hiddenByChannel.size === 0 && (
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             Добавьте контакт клиента, чтобы отправлять сообщения
           </p>
@@ -562,6 +645,19 @@ export default function MessagesPage() {
   const read = useMutation({
     mutationFn: async (id: string) => {
       await api.post(`/conversations/${id}/read`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+
+  const readAll = useMutation({
+    mutationFn: async () => {
+      await api.post("/conversations/read-all");
+    },
+    onSuccess: () => {
+      toast({ title: "Все диалоги отмечены прочитанными" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -678,6 +774,15 @@ export default function MessagesPage() {
               Архив
             </button>
             <button
+              onClick={() => readAll.mutate()}
+              disabled={readAll.isPending}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              title="Отметить все диалоги прочитанными"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Прочитать все
+            </button>
+            <button
               onClick={() => {
                 queryClient.invalidateQueries({ queryKey: ["conversations"] });
                 queryClient.invalidateQueries({ queryKey: ["conversation"] });
@@ -697,6 +802,7 @@ export default function MessagesPage() {
             archived={archivedView}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            onMarkRead={(id) => read.mutate(id)}
           />
         </div>
       </aside>

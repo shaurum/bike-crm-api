@@ -98,7 +98,10 @@ async def get_updates(offset: int, timeout: int = 50) -> list[dict[str, Any]]:
 
 
 async def send_message(chat_id: str, text: str) -> str:
-    result = await call("sendMessage", chat_id=chat_id, text=text[:4096])
+    target = (chat_id or "").strip()
+    if target and not target.lstrip("-").isdigit() and not target.startswith("@"):
+        target = f"@{target}"
+    result = await call("sendMessage", chat_id=target, text=text[:4096])
     if isinstance(result, dict) and result.get("message_id") is not None:
         return str(result["message_id"])
     return ""

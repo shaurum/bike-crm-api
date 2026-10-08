@@ -137,3 +137,33 @@ async def reset_password(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Полное удаление аккаунта. Нельзя удалить себя и последнего админа."""
+    from sqlalchemy import func
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить самого себя")
+    if user.role == UserRole.ADMIN:
+        others = await db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == UserRole.ADMIN, User.id != user.id)
+        )
+        if not others:
+            raise HTTPException(
+                status_code=400, detail="Нельзя удалить последнего администратора"
+            )
+
+    await db.delete(user)
+    await db.commit()
+    return {"ok": True}

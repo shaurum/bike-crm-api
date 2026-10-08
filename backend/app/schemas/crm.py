@@ -15,7 +15,7 @@ class BlankEmailMixin(BaseModel):
         return value
 
 from app.models import (
-    LeadSourceType, LeadStatus, TaskType, TaskStatus,
+    LeadSourceType, LeadStatus, TaskType, TaskStatus, TaskPriority,
     BikeStatus, BookingStatus, UserRole,
 )
 
@@ -175,10 +175,19 @@ class TaskBase(BaseModel):
     description: Optional[str] = None
     due_at: Optional[datetime] = None
     status: TaskStatus = TaskStatus.TODO
+    priority: TaskPriority = TaskPriority.NORMAL
     related_lead_id: Optional[UUID] = None
     related_booking_id: Optional[UUID] = None
     related_bike_id: Optional[UUID] = None
     assignee_id: Optional[UUID] = None
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Название задачи обязательно")
+        return v
 
 
 class TaskCreate(TaskBase):
@@ -186,17 +195,30 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(BaseModel):
+    type: Optional[TaskType] = None
     title: Optional[str] = None
     description: Optional[str] = None
     due_at: Optional[datetime] = None
     status: Optional[TaskStatus] = None
+    priority: Optional[TaskPriority] = None
     assignee_id: Optional[UUID] = None
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("Название задачи обязательно")
+        return v
 
 
 class TaskResponse(TaskBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    created_by_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 

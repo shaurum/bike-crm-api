@@ -43,6 +43,12 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TaskPriority(str, enum.Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
 class LeadSource(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lead_source"
 
@@ -249,6 +255,13 @@ class Task(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         comment="Статус",
     )
+    priority: Mapped[TaskPriority] = mapped_column(
+        SQLEnum(TaskPriority, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        default=TaskPriority.NORMAL,
+        server_default="normal",
+        nullable=False,
+        comment="Приоритет",
+    )
 
     related_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -274,11 +287,22 @@ class Task(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         comment="Исполнитель",
     )
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Кто создал",
+    )
 
     lead: Mapped[Optional["Lead"]] = relationship(back_populates="tasks", lazy="selectin")
     booking: Mapped[Optional["Booking"]] = relationship(back_populates="tasks", lazy="selectin")
     bike: Mapped[Optional["Bike"]] = relationship(back_populates="tasks", lazy="selectin")
-    assignee: Mapped[Optional["User"]] = relationship(back_populates="assigned_tasks", lazy="selectin")
+    assignee: Mapped[Optional["User"]] = relationship(
+        back_populates="assigned_tasks", lazy="selectin", foreign_keys=[assignee_id]
+    )
+    created_by: Mapped[Optional["User"]] = relationship(
+        foreign_keys=[created_by_id], lazy="selectin"
+    )
 
     __table_args__ = (
         Index("ix_task_status_due", "status", "due_at"),

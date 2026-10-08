@@ -324,6 +324,7 @@ export default function UsersPage() {
     role: "manager",
   });
   const [resetFor, setResetFor] = useState<AdminUser | null>(null);
+  const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -384,6 +385,20 @@ export default function UsersPage() {
     },
     onError: (err) =>
       toast({ title: "Не удалось сбросить", description: errText(err, "Ошибка") }),
+  });
+
+  const removeUser = useMutation({
+    mutationFn: async () => {
+      if (!deleteFor) return;
+      await adminUsersApi.remove(deleteFor.id);
+    },
+    onSuccess: () => {
+      toast({ title: "Пользователь удалён" });
+      setDeleteFor(null);
+      invalidate();
+    },
+    onError: (err) =>
+      toast({ title: "Не удалось удалить", description: errText(err, "Ошибка") }),
   });
 
   if (!isAdmin) {
@@ -513,6 +528,16 @@ export default function UsersPage() {
                         )}
                         {u.is_active ? "Отключить" : "Включить"}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isMe || busyId === u.id}
+                        onClick={() => setDeleteFor(u)}
+                        title="Удалить пользователя"
+                      >
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        Удалить
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -617,6 +642,34 @@ export default function UsersPage() {
               disabled={resetPassword.isPending || newPassword.length < 8}
             >
               {resetPassword.isPending ? "…" : "Сбросить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Удаление пользователя */}
+      <Dialog open={Boolean(deleteFor)} onOpenChange={(v) => !v && setDeleteFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Удалить пользователя</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {deleteFor?.full_name} · {deleteFor?.email}
+          </p>
+          <p className="text-sm">
+            Аккаунт будет удалён навсегда. История сообщений и задач сохранится,
+            но авторство будет указано как «удалённый пользователь».
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteFor(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeUser.mutate()}
+              disabled={removeUser.isPending}
+            >
+              {removeUser.isPending ? "…" : "Удалить"}
             </Button>
           </DialogFooter>
         </DialogContent>

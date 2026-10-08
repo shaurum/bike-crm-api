@@ -80,6 +80,16 @@ async def pull_events(after: int = 0, limit: int = 100) -> dict[str, Any]:
     return await _request("GET", "/events", params={"after": after, "limit": limit})
 
 
+async def resolve_telegram(username: str) -> Optional[str]:
+    """Ищем на шлюзе открытый чат Telegram по нику. None — чата нет."""
+    data = await _request(
+        "GET", "/telegram/resolve", params={"username": username}
+    )
+    if isinstance(data, dict) and data.get("found") and data.get("chat_id"):
+        return str(data["chat_id"])
+    return None
+
+
 async def enqueue_outbound(chat_id: str, text: str, source: str = "avito") -> dict[str, Any]:
     return await _request(
         "POST",

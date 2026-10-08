@@ -60,12 +60,26 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
 
 
+def _json_safe(obj):
+    """Приводит объекты ошибок валидации к JSON-совместимым типам
+    (pydantic кладёт в ctx исключения, которые не сериализуются)."""
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return str(obj)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.warning("validation_error", path=request.url.path, errors=exc.errors())
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()},
+        content={"detail": _json_safe(exc.errors())},
     )
 
 
