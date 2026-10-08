@@ -8,6 +8,8 @@ services:
       GATEWAY_DB: /data/gateway.db
       AVITO_CONFIG: /data/avito.json
       AVITO_POLL_INTERVAL: ${AVITO_POLL_INTERVAL:-60}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CONFIG: /data/telegram.json
       OUTBOX_INTERVAL: ${OUTBOX_INTERVAL:-2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:

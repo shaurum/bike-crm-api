@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models import (
+    ContactPoint,
     Customer,
     CustomerDocument,
     CustomerDocumentType,
@@ -24,6 +25,7 @@ from app.schemas.rental import (
     CustomerUpdate,
     CustomerDocumentResponse,
 )
+from app.services.messaging import normalize_value
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -129,8 +131,91 @@ async def create_customer(
 
     customer = Customer(**payload.model_dump())
     db.add(customer)
+    await db.flush()
+
+    # Поля «телефон/email» — основные способы связи, дублируем их в contact_point
+    for channel, raw in (("phone", payload.phone), ("email", payload.email)):
+        if raw:
+            db.add(
+                ContactPoint(
+                    customer_id=customer.id,
+                    channel=channel,
+                    value=normalize_value(channel, str(raw)),
+                    is_primary=True,
+                )
+            )
+
     await db.commit()
     return await _get_customer(db, customer.id)
+
+
+async def _sync_contact_point(
+    db: AsyncSession,
+    customer_id: UUID,
+    channel: str,
+    old_value: Optional[str],
+    new_value: Optional[str],
+) -> None:
+    """Телефон/email в карточке — основной контакт канала, держим contact_point в согласии."""
+    if not new_value or new_value == old_value:
+        return
+    value = normalize_value(channel, new_value)
+
+    # Старый контакт обновляем на новое значение, если оно никем не занято
+    if old_value:
+        old_norm = normalize_value(channel, old_value)
+        existing = (
+            await db.execute(
+                select(ContactPoint).where(
+                    ContactPoint.customer_id == customer_id,
+                    ContactPoint.channel == channel,
+                    ContactPoint.value == old_norm,
+                )
+            )
+        ).scalars().first()
+        if existing:
+            taken = (
+                await db.execute(
+                    select(ContactPoint.id).where(
+                        ContactPoint.customer_id == customer_id,
+                        ContactPoint.channel == channel,
+                        ContactPoint.value == value,
+                        ContactPoint.id != existing.id,
+                    )
+                )
+            ).scalars().first()
+            if not taken:
+                existing.value = value
+                return
+
+    taken = (
+        await db.execute(
+            select(ContactPoint.id).where(
+                ContactPoint.customer_id == customer_id,
+                ContactPoint.channel == channel,
+                ContactPoint.value == value,
+            )
+        )
+    ).scalars().first()
+    if taken:
+        return
+
+    has_channel = (
+        await db.execute(
+            select(ContactPoint.id).where(
+                ContactPoint.customer_id == customer_id,
+                ContactPoint.channel == channel,
+            )
+        )
+    ).scalars().first()
+    db.add(
+        ContactPoint(
+            customer_id=customer_id,
+            channel=channel,
+            value=value,
+            is_primary=not has_channel,
+        )
+    )
 
 
 @router.patch("/{customer_id}", response_model=CustomerResponse)
@@ -144,8 +229,14 @@ async def update_customer(
     if not customer:
         raise HTTPException(status_code=404, detail="Клиент не найден")
 
+    old_phone, old_email = customer.phone, customer.email
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(customer, field, value)
+
+    if "phone" in payload.model_fields_set:
+        await _sync_contact_point(db, customer_id, "phone", old_phone, customer.phone)
+    if "email" in payload.model_fields_set:
+        await _sync_contact_point(db, customer_id, "email", old_email, customer.email)
 
     await db.commit()
     return await _get_customer(db, customer_id)

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useAuthStore, useAuthReady } from "@/lib/store";
 import { api, authApi } from "@/lib/api";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
+import { HealthStatus } from "@/components/layout/health-status";
 import { cn } from "@/lib/utils";
 
 function isActiveRoute(href: string, pathname: string) {
@@ -38,10 +39,14 @@ function useUnreadTotal() {
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const unread = useUnreadTotal();
+  const role = useAuthStore((state) => state.user?.role);
+  const items = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || role === "admin"
+  );
 
   return (
     <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = isActiveRoute(item.href, pathname);
         const Icon = item.icon;
         const showBadge = item.href === "/messages" && unread > 0;
@@ -158,6 +163,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto p-3">
           <NavLinks />
         </div>
+        <div className="border-t border-gray-200 p-3">
+          <HealthStatus />
+        </div>
         <UserPanel />
       </aside>
 
@@ -186,6 +194,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             <NavLinks onNavigate={() => setMenuOpen(false)} />
+          </div>
+          <div className="border-t border-gray-200 p-3">
+            <HealthStatus />
           </div>
           <UserPanel onNavigate={() => setMenuOpen(false)} />
         </DialogContent>

@@ -9,21 +9,24 @@ import {
   Mail,
   Plug,
   Power,
+  RefreshCw,
   Save,
   UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
-import { api } from "@/lib/api";
+import { api, systemApi } from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-type TabKey = "general" | "account" | "integrations";
+type TabKey = "general" | "account" | "integrations" | "update";
 
 const TABS: { key: TabKey; label: string; icon: typeof Building2 }[] = [
   { key: "general", label: "Основное", icon: Building2 },
   { key: "account", label: "Аккаунт", icon: UserRound },
   { key: "integrations", label: "Интеграции", icon: Plug },
+  { key: "update", label: "Обновление", icon: RefreshCw },
 ];
 
 /* ---------- Реквизиты арендодателя ---------- */
@@ -1043,6 +1046,109 @@ function IntegrationsTab() {
   );
 }
 
+/* ---------- Обновление ---------- */
+
+function UpdateTab() {
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
+
+  const { data, refetch, isFetching } = useQuery({
+    queryKey: ["system", "version"],
+    queryFn: async () => (await systemApi.version()).data,
+    refetchInterval: (query) => (query.state.data?.updating ? 3000 : 60000),
+  });
+
+  const check = useMutation({
+    mutationFn: async () => (await systemApi.checkUpdate()).data,
+    onSuccess: (res) => {
+      toast({ title: res.ok ? "Проверка запущена" : "Недоступно", description: res.detail });
+      if (res.ok) {
+        setTimeout(() => refetch(), 2500);
+      }
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) =>
+      toast({
+        title: "Ошибка",
+        description: error.response?.data?.detail || "Не удалось запросить обновление",
+      }),
+  });
+
+  if (!data) {
+    return <p className="text-sm text-muted-foreground">Загрузка версии…</p>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-semibold">Обновление CRM</h2>
+        <p className="text-sm text-muted-foreground">
+          Сервер сам подтягивает новые версии из репозитория раз в минуту.
+          Здесь видно текущую сборку и состояние обновления.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-md border p-3">
+          <p className="text-xs text-muted-foreground">Текущая версия</p>
+          <p className="mt-1 font-mono text-sm">
+            {data.current_sha ? `#${data.current_sha}` : "неизвестно"}
+          </p>
+          {data.current_date && (
+            <p className="text-xs text-muted-foreground">
+              {new Date(data.current_date).toLocaleString("ru-RU")}
+            </p>
+          )}
+        </div>
+        <div className="rounded-md border p-3">
+          <p className="text-xs text-muted-foreground">Последняя проверка</p>
+          <p className="mt-1 text-sm">
+            {data.last_check
+              ? new Date(data.last_check).toLocaleString("ru-RU")
+              : "ещё не выполнялась"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {data.auto_update ? "Автообновление: включено (каждую минуту)" : "Автообновление не настроено"}
+          </p>
+        </div>
+      </div>
+
+      {data.updating && (
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+          Обновление устанавливается — CRM перезапустится через минуту
+        </div>
+      )}
+
+      {!data.updating && data.update_available && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Доступна новая версия {data.remote_sha ? `#${data.remote_sha}` : ""} —
+          установится автоматически в течение минуты
+        </div>
+      )}
+
+      {!data.updating && !data.update_available && (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Установлена последняя версия
+        </div>
+      )}
+
+      {isAdmin && (
+        <button
+          onClick={() => check.mutate()}
+          disabled={check.isPending || data.updating || isFetching}
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-4 w-4", check.isPending && "animate-spin")} />
+          {check.isPending ? "Проверяем…" : "Проверить обновления сейчас"}
+        </button>
+      )}
+
+      {data.note && (
+        <p className="text-xs text-muted-foreground">Статус: {data.note}</p>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Страница ---------- */
 
 export default function SettingsPage() {
@@ -1050,7 +1156,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("tab");
-    if (wanted === "general" || wanted === "account" || wanted === "integrations") {
+    if (
+      wanted === "general" ||
+      wanted === "account" ||
+      wanted === "integrations" ||
+      wanted === "update"
+    ) {
       setTab(wanted);
     }
   }, []);
@@ -1092,6 +1203,7 @@ export default function SettingsPage() {
         {tab === "general" && <GeneralTab />}
         {tab === "account" && <AccountTab />}
         {tab === "integrations" && <IntegrationsTab />}
+        {tab === "update" && <UpdateTab />}
       </div>
     </div>
   );

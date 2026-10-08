@@ -59,14 +59,14 @@ async def _ingest_event(session: AsyncSession, event: dict) -> None:
     text = str(event.get("text") or "").strip()
     if not text:
         return
-    if source != "avito":
+    if source not in ("avito", "telegram"):
         logger.info("Шлюз: источник «%s» пока не поддержан, событие пропущено", source)
         return
 
     chat_id = str(event.get("chat_id") or "")
     await _ingest(
         session,
-        channel="avito",
+        channel=source,
         sender=str(event.get("sender") or chat_id),
         content=text,
         name=event.get("sender_name"),

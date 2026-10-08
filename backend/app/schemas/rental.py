@@ -153,6 +153,9 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    invite_token: Optional[str] = Field(
+        default=None, description="Токен пригласительной ссылки (регистрация по приглашению)"
+    )
 
 
 class UserUpdate(BaseModel):
@@ -177,6 +180,12 @@ class PasswordChange(BaseModel):
 
     current_password: str
     new_password: str
+
+
+class UserPasswordReset(BaseModel):
+    """Админ сбрасывает пароль пользователю — текущий не нужен."""
+
+    new_password: str = Field(..., min_length=8)
 
 
 class UserResponse(UserBase):

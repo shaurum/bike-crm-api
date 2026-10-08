@@ -91,6 +91,13 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="open", comment="open / closed"
     )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="Скрыт из ленты; входящие не поднимают счётчик",
+    )
     last_message_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app import avito, db
+from app import avito, db, telegram
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -216,6 +216,9 @@ async def deliver_outbox() -> None:
             connection, int(row["id"]), "Превышен лимит попыток доставки", retryable=False
         )
         return
+    if row["source"] == "telegram":
+        await deliver_telegram(row)
+        return
     if row["source"] != "avito":
         db.mark_failed(
             connection,
@@ -238,6 +241,11 @@ async def deliver_outbox() -> None:
     except avito.AvitoError as exc:
         retryable = exc.status_code is None or exc.status_code >= 500
         logger.warning("Avito: не отправлено (id=%s): %s", row["id"], exc)
+        if exc.status_code == 402:
+            # Тариф не оплачен — исходящие заблокированы, помечаем для статусов
+            avito.save_config(
+                {"paywall": True, "paywall_at": datetime.now(timezone.utc).isoformat()}
+            )
         db.mark_failed(connection, int(row["id"]), str(exc), retryable=retryable)
         return
     except Exception as exc:  # noqa: BLE001
@@ -245,8 +253,67 @@ async def deliver_outbox() -> None:
         db.mark_failed(connection, int(row["id"]), str(exc), retryable=True)
         return
 
+    if avito.load_config().get("paywall"):
+        avito.save_config({"paywall": False, "paywall_at": ""})
     db.mark_sent(connection, int(row["id"]))
     logger.info("Avito: отправлено (id=%s)", row["id"])
+
+
+async def deliver_telegram(row: Any) -> None:
+    if not telegram.bot_token():
+        db.mark_failed(
+            connection, int(row["id"]), "Telegram-бот не настроен на шлюзе", retryable=True
+        )
+        return
+    try:
+        await telegram.send_message(str(row["chat_id"]), str(row["text"]))
+    except telegram.TelegramError as exc:
+        retryable = exc.status_code is None or exc.status_code == 429 or exc.status_code >= 500
+        logger.warning("Telegram: не отправлено (id=%s): %s", row["id"], exc)
+        db.mark_failed(connection, int(row["id"]), str(exc), retryable=retryable)
+        return
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Telegram: сбой отправки (id=%s)", row["id"])
+        db.mark_failed(connection, int(row["id"]), str(exc), retryable=True)
+        return
+
+    db.mark_sent(connection, int(row["id"]))
+    logger.info("Telegram: отправлено (id=%s)", row["id"])
+
+
+async def poll_telegram() -> None:
+    """Long-polling getUpdates: одно «зависшее» соединение вместо секундных опросов."""
+    offset = int(telegram.load_config().get("offset") or 0)
+    updates = await telegram.get_updates(offset, timeout=50)
+    if not updates:
+        return
+
+    for update in updates:
+        message = update.get("message") or {}
+        chat = message.get("chat") or {}
+        user = message.get("from") or {}
+        chat_id = str(chat.get("id") or "")
+        message_id = message.get("message_id")
+        text = telegram.message_text(message)
+        if not chat_id or not message_id or user.get("is_bot") or not text:
+            continue
+        try:
+            db.add_inbound(
+                connection,
+                source="telegram",
+                external_id=f"{chat_id}:{message_id}",
+                chat_id=chat_id,
+                text=text,
+                sender=str(user.get("id") or chat_id),
+                sender_name=telegram.sender_name(message),
+                occurred_at=telegram.iso_from_unix(message.get("date")),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Telegram: не разобрали update_id=%s", update.get("update_id"))
+
+    last = int(updates[-1].get("update_id") or 0)
+    if last:
+        telegram.save_config({"offset": last + 1})
 
 
 async def _poll_loop() -> None:
@@ -271,17 +338,36 @@ async def _send_loop() -> None:
         await asyncio.sleep(SEND_INTERVAL)
 
 
+async def _telegram_loop() -> None:
+    while True:
+        try:
+            if not telegram.bot_token():
+                await asyncio.sleep(30)
+                continue
+            await poll_telegram()
+        except asyncio.CancelledError:
+            raise
+        except telegram.TelegramError as exc:
+            logger.warning("Telegram: long-polling сбоит: %s", exc)
+            await asyncio.sleep(5)
+        except Exception:  # noqa: BLE001
+            logger.exception("Telegram: сбой цикла опроса")
+            await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     poller = asyncio.create_task(_poll_loop())
     sender = asyncio.create_task(_send_loop())
+    tg_poller = asyncio.create_task(_telegram_loop())
     logger.info("Gateway started (poll=%ss, send=%ss)", POLL_INTERVAL, SEND_INTERVAL)
     try:
         yield
     finally:
         poller.cancel()
         sender.cancel()
-        await asyncio.gather(poller, sender, return_exceptions=True)
+        tg_poller.cancel()
+        await asyncio.gather(poller, sender, tg_poller, return_exceptions=True)
 
 
 app = FastAPI(title="Integration Gateway", lifespan=lifespan)
@@ -295,6 +381,15 @@ async def health() -> dict[str, Any]:
 @app.get("/status", dependencies=[Depends(require_token)])
 async def status() -> dict[str, Any]:
     config = avito.load_config()
+    tg_configured = bool(telegram.bot_token())
+    tg_username = telegram.load_config().get("username")
+    if tg_configured and not tg_username:
+        try:
+            me = await telegram.get_me()
+            tg_username = me.get("username")
+            telegram.save_config({"username": tg_username})
+        except telegram.TelegramError as exc:
+            logger.warning("Telegram getMe не удался: %s", exc)
     return {
         "avito": {
             "configured": bool(config.get("client_id") and config.get("client_secret")),
@@ -304,6 +399,12 @@ async def status() -> dict[str, Any]:
             "account_phone": config.get("account_phone"),
             "token_expires_at": config.get("token_expires_at"),
             "redirect_uri": config.get("redirect_uri"),
+            "paywall": bool(config.get("paywall")),
+            "paywall_at": config.get("paywall_at"),
+        },
+        "telegram": {
+            "configured": tg_configured,
+            "username": tg_username,
         },
         "queue": db.stats(connection),
         "poll_interval": POLL_INTERVAL,

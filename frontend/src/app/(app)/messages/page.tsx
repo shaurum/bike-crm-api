@@ -2,9 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Archive,
   ArrowLeft,
   Lock,
   Plus,
+  RotateCw,
   Search,
   Send,
   Unlock,
@@ -13,12 +15,14 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
+import { ChannelIcon } from "@/components/channel-icon";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface ConversationItem {
   id: string;
   status: string;
+  is_archived: boolean;
   last_message_at: string | null;
   unread_count: number;
   customer_id: string;
@@ -54,6 +58,7 @@ interface MessageItem {
 interface ConversationDetail {
   id: string;
   status: string;
+  is_archived: boolean;
   unread_count: number;
   customer_id: string;
   customer_name: string;
@@ -128,19 +133,25 @@ function DealBadge({ state }: { state: string }) {
 function ConversationList({
   search,
   filter,
+  archived,
   selectedId,
   onSelect,
 }: {
   search: string;
   filter: string;
+  archived: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
   const { data, isLoading } = useQuery({
-    queryKey: ["conversations", search, filter],
+    queryKey: ["conversations", search, filter, archived],
     queryFn: async () => {
       const { data } = await api.get<ConversationItem[]>("/conversations", {
-        params: { search: search || undefined, status_filter: filter },
+        params: {
+          search: search || undefined,
+          status_filter: filter,
+          archived: archived ? true : undefined,
+        },
       });
       return data;
     },
@@ -153,7 +164,11 @@ function ConversationList({
   if (!data || data.length === 0) {
     return (
       <p className="p-6 text-center text-sm text-muted-foreground">
-        {search || filter !== "all" ? "Ничего не найдено" : "Сообщений пока нет"}
+        {archived
+          ? "Архив пуст"
+          : search || filter !== "all"
+            ? "Ничего не найдено"
+            : "Сообщений пока нет"}
       </p>
     );
   }
@@ -191,7 +206,8 @@ function ConversationList({
             {item.awaiting_reply && <AwaitingBadge />}
             <DealBadge state={item.deal_state} />
             {item.channel && (
-              <span className="text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <ChannelIcon channel={item.channel} className="h-3.5 w-3.5" />
                 {CHANNEL_LABELS[item.channel] || item.channel}
               </span>
             )}
@@ -249,6 +265,7 @@ function ContactsPanel({
       setValue("");
       setLabel("");
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
       toast({
@@ -452,7 +469,8 @@ function Thread({
                   </p>
                   <div className="mt-1 flex items-center gap-2 text-[10px] opacity-70">
                     <span>{formatTime(message.created_at)}</span>
-                    <span>
+                    <span className="inline-flex items-center gap-1">
+                      <ChannelIcon channel={message.channel} className="h-3 w-3" />
                       {CHANNEL_LABELS[message.channel] || message.channel}
                     </span>
                     {outbound && message.author_name && (
@@ -526,6 +544,7 @@ export default function MessagesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [showContacts, setShowContacts] = useState(false);
+  const [archivedView, setArchivedView] = useState(false);
 
   const { data: conversation } = useQuery({
     queryKey: ["conversation", selectedId],
@@ -554,6 +573,31 @@ export default function MessagesPage() {
     mutationFn: async (id: string) => {
       const next = conversation?.status === "closed" ? "open" : "close";
       await api.post(`/conversations/${id}/${next === "open" ? "open" : "close"}`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+
+  const toggleArchive = useMutation({
+    mutationFn: async (id: string) => {
+      const action = conversation?.is_archived ? "unarchive" : "archive";
+      await api.post(`/conversations/${id}/${action}`);
+    },
+    onSuccess: () => {
+      if (conversation?.is_archived) {
+        toast({ title: "Чат возвращён из архива" });
+      } else {
+        toast({ title: "Чат скрыт", description: "Найти его можно во вкладке «Архив»" });
+        setSelectedId(null);
+      }
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) => {
+      toast({
+        title: "Не удалось изменить статус чата",
+        description: error.response?.data?.detail || "Ошибка сохранения",
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -610,7 +654,7 @@ export default function MessagesPage() {
                 onClick={() => setFilter(item.key)}
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs font-medium",
-                  filter === item.key
+                  filter === item.key && !archivedView
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted"
                 )}
@@ -618,6 +662,31 @@ export default function MessagesPage() {
                 {item.label}
               </button>
             ))}
+            <button
+              onClick={() => setArchivedView((v) => !v)}
+              className={cn(
+                "ml-auto inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium",
+                archivedView
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
+              title={
+                archivedView ? "Вернуться к активным чатам" : "Скрытые чаты"
+              }
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Архив
+            </button>
+            <button
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["conversations"] });
+                queryClient.invalidateQueries({ queryKey: ["conversation"] });
+              }}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              title="Обновить сообщения"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
 
@@ -625,6 +694,7 @@ export default function MessagesPage() {
           <ConversationList
             search={search}
             filter={filter}
+            archived={archivedView}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
@@ -666,6 +736,12 @@ export default function MessagesPage() {
                       закрыт
                     </span>
                   )}
+                  {conversation.is_archived && (
+                    <span className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      <Archive className="h-3 w-3" />
+                      в архиве
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   {conversation.customer_phone && <span>{conversation.customer_phone}</span>}
@@ -703,6 +779,23 @@ export default function MessagesPage() {
                   ) : (
                     <Lock className="inline h-3.5 w-3.5" />
                   )}
+                </button>
+                <button
+                  onClick={() => toggleArchive.mutate(conversation.id)}
+                  disabled={toggleArchive.isPending}
+                  className="rounded-md border px-2 py-1 text-xs"
+                  title={
+                    conversation.is_archived
+                      ? "Вернуть из архива"
+                      : "Скрыть чат из ленты"
+                  }
+                >
+                  <Archive
+                    className={cn(
+                      "inline h-3.5 w-3.5",
+                      conversation.is_archived && "fill-current"
+                    )}
+                  />
                 </button>
               </div>
             </header>

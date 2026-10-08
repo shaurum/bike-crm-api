@@ -33,6 +33,7 @@ class ContactPointCreate(BaseModel):
 
 
 class ContactPointUpdate(BaseModel):
+    value: Optional[str] = None
     label: Optional[str] = None
     is_primary: Optional[bool] = None
 
@@ -40,6 +41,7 @@ class ContactPointUpdate(BaseModel):
 class ConversationListResponse(BaseModel):
     id: UUID
     status: str
+    is_archived: bool = False
     last_message_at: Optional[datetime] = None
     unread_count: int = 0
     customer_id: UUID
@@ -72,6 +74,7 @@ class MessageResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     id: UUID
     status: str
+    is_archived: bool = False
     last_message_at: Optional[datetime] = None
     unread_count: int = 0
     customer_id: UUID

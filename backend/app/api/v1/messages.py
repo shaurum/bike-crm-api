@@ -67,12 +67,21 @@ async def _load_conversation(db: AsyncSession, conversation_id: UUID) -> Convers
 async def list_conversations(
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
+    archived: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Лента диалогов, отсортирована по последнему сообщению."""
-    query = select(Conversation).order_by(
-        Conversation.last_message_at.desc().nullslast(), Conversation.created_at.desc()
+    """Лента диалогов, отсортирована по последнему сообщению.
+
+    По умолчанию скрытые (архивные) чаты не отдаются — ими управляют
+    отдельным параметром archived=true.
+    """
+    query = (
+        select(Conversation)
+        .where(Conversation.is_archived == archived)
+        .order_by(
+            Conversation.last_message_at.desc().nullslast(), Conversation.created_at.desc()
+        )
     )
 
     rows = (await db.execute(query)).scalars().all()
@@ -122,6 +131,7 @@ async def list_conversations(
                 channel=(last.channel if last else None),
                 awaiting_reply=bool(last and last.direction == "inbound"),
                 contacts=contacts,
+                is_archived=conv.is_archived,
             )
         )
 
@@ -201,6 +211,7 @@ async def get_conversation(
     return ConversationDetailResponse(
         id=conv.id,
         status=conv.status,
+        is_archived=conv.is_archived,
         last_message_at=conv.last_message_at,
         unread_count=conv.unread_count or 0,
         customer_id=customer.id,
@@ -348,6 +359,18 @@ async def _deliver(
             return f"Письмо не отправлено: {exc}"
 
     if channel == "telegram":
+        from app.services import gateway
+
+        if gateway.is_configured():
+            address = str(recipient.external_id or recipient.value or "")
+            if not address:
+                return "Не найден адрес чата Telegram в контакте клиента"
+            try:
+                await gateway.enqueue_outbound(address, content, source="telegram")
+                return None
+            except gateway.GatewayError as exc:
+                return f"Шлюз не принял сообщение: {exc}"
+
         token = await _integration_token(db, "telegram")
         if not token:
             return "Telegram не подключён — сообщение сохранено в истории"
@@ -453,6 +476,35 @@ async def reopen_conversation(
     return {"ok": True, "status": conv.status}
 
 
+@router.post("/{conversation_id}/archive")
+async def archive_conversation(
+    conversation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Скрывает чат из ленты: история остаётся, входящие не мигают.
+
+    Годится для почтового спама — скрытый чат не поднимается обратно.
+    """
+    conv = await _load_conversation(db, conversation_id)
+    conv.is_archived = True
+    conv.unread_count = 0
+    await db.commit()
+    return {"ok": True, "is_archived": True}
+
+
+@router.post("/{conversation_id}/unarchive")
+async def unarchive_conversation(
+    conversation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    conv = await _load_conversation(db, conversation_id)
+    conv.is_archived = False
+    await db.commit()
+    return {"ok": True, "is_archived": False}
+
+
 # --- Контактные точки ---
 
 
@@ -525,6 +577,23 @@ async def update_contact(
     contact = await db.get(ContactPoint, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Контакт не найден")
+
+    if payload.value is not None and payload.value.strip():
+        new_value = normalize_value(contact.channel, payload.value)
+        if new_value != contact.value:
+            duplicate = await db.execute(
+                select(ContactPoint).where(
+                    ContactPoint.customer_id == contact.customer_id,
+                    ContactPoint.channel == contact.channel,
+                    ContactPoint.value == new_value,
+                    ContactPoint.id != contact.id,
+                )
+            )
+            if duplicate.scalars().first():
+                raise HTTPException(
+                    status_code=409, detail="Такой контакт у клиента уже есть"
+                )
+            contact.value = new_value
 
     if payload.label is not None:
         contact.label = payload.label

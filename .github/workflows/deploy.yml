@@ -1,0 +1,33 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Деплой на VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Деплой по SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            if [ ! -f /opt/bike-crm/scripts/auto-update.sh ]; then
+              echo "Репозиторий ещё не клонирован на сервер — выполните первый клон" >&2
+              exit 1
+            fi
+            bash /opt/bike-crm/scripts/auto-update.sh
+            cat /opt/bike-crm/backend/.update_state.json 2>/dev/null || true

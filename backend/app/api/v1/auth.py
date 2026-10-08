@@ -34,6 +34,7 @@ class UserCreate(BaseModel):
     phone: str | None = None
     role: UserRole = UserRole.MANAGER
     branch_id: uuid.UUID | None = None
+    invite_token: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -74,24 +75,85 @@ async def get_current_user(
     return user
 
 
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Только для администратора — управление пользователями и настройками."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Действие доступно только администратору",
+        )
+    return current_user
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+    """Регистрация по приглашению; без него — только на пустой базе (bootstrap, admin)."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import func
+
+    from app.models import Invite
+
+    if len(user_data.password) < 8:
+        raise HTTPException(status_code=400, detail="Пароль должен быть не короче 8 символов")
+
     result = await db.execute(select(User).where(User.email == user_data.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
+
+    total = await db.scalar(select(func.count()).select_from(User)) or 0
+    role = UserRole.ADMIN
+    invite = None
+
+    if user_data.invite_token:
+        result = await db.execute(
+            select(Invite).where(Invite.token == user_data.invite_token)
+        )
+        invite = result.scalar_one_or_none()
+        if not invite:
+            raise HTTPException(status_code=400, detail="Неверная ссылка-приглашение")
+        if invite.used_at:
+            raise HTTPException(status_code=403, detail="Приглашение уже использовано")
+        if invite.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=403, detail="Приглашение истекло")
+        if invite.email and invite.email.lower() != user_data.email.lower():
+            raise HTTPException(
+                status_code=403,
+                detail="Приглашение оформлено на другой email",
+            )
+        role = UserRole(invite.role)
+    elif total > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Регистрация закрыта — аккаунт создаёт администратор",
+        )
 
     user = User(
         email=user_data.email,
         hashed_password=get_password_hash(user_data.password),
         full_name=user_data.full_name,
         phone=user_data.phone,
-        role=user_data.role,
+        role=role,
         branch_id=user_data.branch_id,
     )
     db.add(user)
+    if invite:
+        invite.used_at = datetime.now(timezone.utc)
+        invite.used_by = user.id
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.get("/register-status")
+async def register_status(db: AsyncSession = Depends(get_db)):
+    """Можно ли регистрироваться без приглашения (пустая база — bootstrap)."""
+    from sqlalchemy import func
+
+    total = await db.scalar(select(func.count()).select_from(User)) or 0
+    return {"open": total == 0}
 
 
 @router.post("/login", response_model=TokenResponse)

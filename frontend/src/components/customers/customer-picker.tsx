@@ -225,9 +225,11 @@ export function CustomerPicker({
                         <span>{passportOf(m)}</span>
                       </p>
                       <p className="mt-1 flex flex-wrap gap-1">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {DOC_LABELS[m.document_type] ?? m.document_type}
-                        </Badge>
+                        {m.passport_number && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {DOC_LABELS[m.document_type] ?? m.document_type}
+                          </Badge>
+                        )}
                         {m.country && m.country !== "Россия" && (
                           <Badge variant="outline" className="text-[10px]">
                             {m.country}

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,10 +90,7 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground text-center">
-            Нет аккаунта?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Зарегистрироваться
-            </Link>
+            Аккаунт создаёт администратор
           </p>
         </CardFooter>
       </Card>

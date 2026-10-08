@@ -55,3 +55,7 @@ temp/
 *.tsbuildinfo
 celerybeat-schedule
 celerybeat-schedule.db
+
+# Состояние автообновления (пишет cron на сервере)
+backend/.update_state.json
+backend/.update_requested

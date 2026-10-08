@@ -13,6 +13,7 @@ import {
   Cake,
   FileText,
   Ban,
+  Pencil,
   Search,
 } from "lucide-react";
 
@@ -35,7 +36,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { customersApi, API_URL } from "@/lib/api";
+import { customersApi, api, API_URL } from "@/lib/api";
+import { ChannelIcon } from "@/components/channel-icon";
 import { cn } from "@/lib/utils";
 
 interface CustomerDoc {
@@ -185,7 +187,15 @@ function CustomerCard({
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        <Badge variant="secondary">{DOC_LABELS[customer.document_type] ?? customer.document_type}</Badge>
+        {hasPassport ? (
+          <Badge variant="secondary">
+            {DOC_LABELS[customer.document_type] ?? customer.document_type}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-amber-600">
+            Паспорт не заполнен
+          </Badge>
+        )}
         {customer.country && customer.country !== "Россия" && (
           <Badge variant="outline">{customer.country}</Badge>
         )}
@@ -213,6 +223,323 @@ function CustomerCard({
         </p>
       </div>
     </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Каналы связи клиента (contact_point): их может быть несколько       */
+/* ------------------------------------------------------------------ */
+
+interface ContactPoint {
+  id: string;
+  channel: string;
+  value: string;
+  label: string | null;
+  is_primary: boolean;
+  is_verified: boolean;
+}
+
+const CONTACT_CHANNELS = [
+  { value: "phone", label: "Телефон" },
+  { value: "email", label: "Почта" },
+  { value: "telegram", label: "Telegram" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "vk", label: "ВКонтакте" },
+  { value: "avito", label: "Авито" },
+];
+
+const CONTACT_CHANNEL_LABELS: Record<string, string> = Object.fromEntries(
+  CONTACT_CHANNELS.map((c) => [c.value, c.label])
+);
+
+function contactPlaceholder(channel: string): string {
+  switch (channel) {
+    case "email":
+      return "mail@example.com";
+    case "telegram":
+      return "@username или +79001234567";
+    case "vk":
+      return "screen name или ссылка";
+    case "avito":
+      return "ID клиента на Авито";
+    default:
+      return "+79001234567";
+  }
+}
+
+function ContactPointsSection({
+  customerId,
+  reloadKey,
+}: {
+  customerId: string;
+  reloadKey: number;
+}) {
+  const [contacts, setContacts] = useState<ContactPoint[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [channel, setChannel] = useState("phone");
+  const [value, setValue] = useState("");
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<ContactPoint | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editLabel, setEditLabel] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get<ContactPoint[]>(
+        `/conversations/contacts/${customerId}`
+      );
+      setContacts(res.data);
+      setLoaded(true);
+    } catch {
+      setLoaded(true);
+    }
+  }, [customerId]);
+
+  useEffect(() => {
+    if (customerId) load();
+  }, [customerId, reloadKey, load]);
+
+  const add = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/conversations/contacts/${customerId}`, {
+        channel,
+        value: value.trim(),
+        label: label.trim() || null,
+      });
+      setValue("");
+      setLabel("");
+      setAdding(false);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось добавить контакт");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.delete(`/conversations/contacts/${id}`);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось удалить контакт");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEdit = (contact: ContactPoint) => {
+    setEditing(contact);
+    setEditValue(contact.value);
+    setEditLabel(contact.label || "");
+    setAdding(false);
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editValue.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.patch(`/conversations/contacts/${editing.id}`, {
+        value: editValue.trim(),
+        label: editLabel.trim() || null,
+      });
+      setEditing(null);
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось изменить контакт");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makePrimary = async (contact: ContactPoint) => {
+    if (contact.is_primary) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.patch(`/conversations/contacts/${contact.id}`, {
+        is_primary: true,
+      });
+      await load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Не удалось изменить контакт");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">Каналы связи</p>
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(null);
+            setAdding((v) => !v);
+          }}
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Plus className="h-3 w-3" aria-hidden />
+          Добавить
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {loaded && contacts.length === 0 && !adding && (
+        <p className="text-xs text-muted-foreground">
+          Контактов пока нет — добавьте телефон, почту или мессенджер
+        </p>
+      )}
+
+      <ul className="space-y-1.5">
+        {contacts.map((contact) => (
+          <li
+            key={contact.id}
+            className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5"
+          >
+            {editing?.id === contact.id ? (
+              <>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder={contactPlaceholder(contact.channel)}
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    placeholder="Подпись (необязательно)"
+                    className="w-full rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    disabled={!editValue.trim() || busy}
+                    className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:opacity-50"
+                  >
+                    {busy ? "…" : "Сохранить"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    className="rounded-md border px-2.5 py-1 text-xs"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex min-w-0 items-center gap-2">
+                  <ChannelIcon channel={contact.channel} className="h-4 w-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">{contact.value}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {CONTACT_CHANNEL_LABELS[contact.channel] || contact.channel}
+                      {contact.label ? ` · ${contact.label}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {contact.is_primary ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      основной
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => makePrimary(contact)}
+                      disabled={busy}
+                      className="hidden rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted sm:inline"
+                      title="Сделать основным контактом канала"
+                    >
+                      основной
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => startEdit(contact)}
+                    disabled={busy}
+                    aria-label="Редактировать контакт"
+                    className="flex h-7 w-7 items-center justify-center rounded text-gray-300 hover:bg-muted hover:text-gray-700"
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(contact.id)}
+                    disabled={busy}
+                    aria-label="Удалить контакт"
+                    className="flex h-7 w-7 items-center justify-center rounded text-gray-300 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {adding && (
+        <div className="space-y-2 rounded-md border p-2">
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          >
+            {CONTACT_CHANNELS.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={contactPlaceholder(channel)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Подпись (необязательно)"
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={add}
+              disabled={!value.trim() || busy}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+            >
+              {busy ? "…" : "Сохранить"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="rounded-md border px-3 py-1.5 text-sm"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -254,6 +581,8 @@ export function CustomerDialog({
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [uploadKind, setUploadKind] = useState("passport_rf");
+  // Каналы связи перечитываем после сохранения — телефон/email синхронизируются на сервере
+  const [contactsVersion, setContactsVersion] = useState(0);
 
   const hydrate = useCallback((data: Customer) => {
     setCustomer(data);
@@ -320,6 +649,7 @@ export function CustomerDialog({
         is_blacklisted: blacklisted,
       });
       hydrate(res.data as Customer);
+      setContactsVersion((v) => v + 1);
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
@@ -432,6 +762,11 @@ export function CustomerDialog({
                   />
                 </div>
               </div>
+
+              <ContactPointsSection
+                customerId={customer.id}
+                reloadKey={contactsVersion}
+              />
 
               <div className="space-y-3 rounded-lg border p-3">
                 <p className="text-sm font-semibold">Документ, удостоверяющий личность</p>

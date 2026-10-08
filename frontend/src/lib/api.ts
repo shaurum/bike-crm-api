@@ -85,8 +85,14 @@ export const authApi = {
     api.post("/auth/login", new URLSearchParams({ username: email, password }), {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     }),
-  register: (data: { email: string; password: string; full_name: string; phone?: string }) =>
-    api.post("/auth/register", data),
+  register: (data: {
+    email: string;
+    password: string;
+    full_name: string;
+    phone?: string;
+    invite_token?: string;
+  }) => api.post("/auth/register", data),
+  registerStatus: () => api.get<{ open: boolean }>("/auth/register-status"),
   refresh: (refreshToken: string) =>
     api.post("/auth/refresh", null, { headers: { Authorization: `Bearer ${refreshToken}` } }),
   me: () => api.get("/auth/me"),
@@ -94,6 +100,62 @@ export const authApi = {
 
 export const usersApi = {
   list: () => api.get("/users/list"),
+};
+
+/** Управление пользователями — только для роли admin (проверяет бэкенд). */
+export const adminUsersApi = {
+  list: () => api.get("/users"),
+  create: (data: {
+    email: string;
+    password: string;
+    full_name: string;
+    phone?: string;
+    role: string;
+  }) => api.post("/users", data),
+  update: (id: string, data: Partial<{ full_name: string; phone: string | null; role: string; is_active: boolean }>) =>
+    api.patch(`/users/${id}`, data),
+  resetPassword: (id: string, newPassword: string) =>
+    api.post(`/users/${id}/password`, { new_password: newPassword }),
+};
+
+/** Пригласительные ссылки — админ создаёт, новичок регистрируется по токену. */
+export interface InviteRecord {
+  id: string;
+  token: string;
+  role: string;
+  email: string | null;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+  status: "active" | "used" | "expired";
+}
+
+export const invitesApi = {
+  list: () => api.get<InviteRecord[]>("/invites"),
+  create: (data: { role: string; email?: string; days: number }) =>
+    api.post<InviteRecord>("/invites", data),
+  remove: (id: string) => api.delete(`/invites/${id}`),
+  validate: (token: string) =>
+    api.get<{ ok: boolean; role: string | null; email: string | null; detail: string | null }>(
+      `/invites/validate/${token}`
+    ),
+};
+
+/** Версия CRM и автообновление на сервере. */
+export interface SystemVersion {
+  current_sha: string | null;
+  current_date: string | null;
+  remote_sha: string | null;
+  update_available: boolean;
+  updating: boolean;
+  last_check: string | null;
+  auto_update: boolean;
+  note: string | null;
+}
+
+export const systemApi = {
+  version: () => api.get<SystemVersion>("/system/version"),
+  checkUpdate: () => api.post<{ ok: boolean; detail: string }>("/system/update-check"),
 };
 
 export const documentsApi = {

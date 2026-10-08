@@ -262,7 +262,11 @@ async def ingest_inbound(
     db.add(message)
 
     conversation.last_message_at = message.created_at or _now()
-    conversation.unread_count = (conversation.unread_count or 0) + 1
+    if conversation.is_archived:
+        # Скрытый чат не мигает счётчиком: спам остаётся в истории без шума
+        message.is_read = True
+    else:
+        conversation.unread_count = (conversation.unread_count or 0) + 1
 
     await db.flush()
 
