@@ -15,6 +15,9 @@
 
 ## 🚀 Быстрый старт (Windows 11 + Docker Desktop)
 
+> 📋 Полная пошаговая инструкция для чистой машины: **[SETUP_WORK_PC.md](SETUP_WORK_PC.md)**
+> (установка ПК → клонирование → перенос `.env` → `scripts\setup-new-pc.ps1` → первый вход)
+
 ### Предварительные требования
 - Windows 11 Pro/Enterprise (WSL2 включён)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) с WSL2 backend
