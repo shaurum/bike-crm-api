@@ -136,7 +136,7 @@ def resolve_chat(
 def pull_inbound(conn: sqlite3.Connection, after_id: int, limit: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT id, source, chat_id, sender, sender_name, text, occurred_at
+        SELECT id, source, chat_id, sender, sender_name, username, text, occurred_at
         FROM event
         WHERE direction = 'inbound' AND id > ?
         ORDER BY id

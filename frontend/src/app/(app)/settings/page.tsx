@@ -11,6 +11,7 @@ import {
   Power,
   RefreshCw,
   Save,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,13 +19,21 @@ import { toast } from "@/hooks/use-toast";
 
 import { api, systemApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { apiErrorMessage, cn } from "@/lib/utils";
 
-type TabKey = "general" | "account" | "integrations" | "update";
+import UsersTab from "./users-tab";
 
-const TABS: { key: TabKey; label: string; icon: typeof Building2 }[] = [
+type TabKey = "general" | "account" | "users" | "integrations" | "update";
+
+const TABS: {
+  key: TabKey;
+  label: string;
+  icon: typeof Building2;
+  adminOnly?: boolean;
+}[] = [
   { key: "general", label: "Основное", icon: Building2 },
   { key: "account", label: "Аккаунт", icon: UserRound },
+  { key: "users", label: "Пользователи", icon: ShieldCheck, adminOnly: true },
   { key: "integrations", label: "Интеграции", icon: Plug },
   { key: "update", label: "Обновление", icon: RefreshCw },
 ];
@@ -87,7 +96,7 @@ function GeneralTab() {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast({ title: "Ошибка", description: error.response?.data?.detail || "Не удалось сохранить реквизиты" });
+      toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось сохранить реквизиты") });
     },
   });
 
@@ -184,7 +193,7 @@ function AccountTab() {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast({ title: "Ошибка", description: error.response?.data?.detail || "Не удалось сохранить профиль" });
+      toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось сохранить профиль") });
     },
   });
 
@@ -197,7 +206,7 @@ function AccountTab() {
       setPasswords({ current_password: "", new_password: "", repeat: "" });
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast({ title: "Ошибка", description: error.response?.data?.detail || "Не удалось изменить пароль" });
+      toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось изменить пароль") });
     },
   });
 
@@ -466,7 +475,7 @@ function EmailIntegration() {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast({ title: "Ошибка", description: error.response?.data?.detail || "Не удалось сохранить настройки почты" });
+      toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось сохранить настройки почты") });
     },
   });
 
@@ -479,7 +488,7 @@ function EmailIntegration() {
     },
     onSuccess: (data) => toast({ title: data?.detail || "Письмо отправлено" }),
     onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast({ title: "Ошибка", description: error.response?.data?.detail || "Не удалось отправить тестовое письмо" });
+      toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось отправить тестовое письмо") });
     },
   });
 
@@ -816,7 +825,7 @@ function AvitoIntegration() {
   const onError = (error: { response?: { data?: { detail?: string } } }) => {
     toast({
       title: "Ошибка",
-      description: error.response?.data?.detail || "Не удалось выполнить действие",
+      description: apiErrorMessage(error, "Не удалось выполнить действие"),
     });
   };
 
@@ -1068,7 +1077,20 @@ function UpdateTab() {
     onError: (error: { response?: { data?: { detail?: string } } }) =>
       toast({
         title: "Ошибка",
-        description: error.response?.data?.detail || "Не удалось запросить обновление",
+        description: apiErrorMessage(error, "Не удалось запросить обновление"),
+      }),
+  });
+
+  const setMode = useMutation({
+    mutationFn: async (mode: "auto" | "manual") => (await systemApi.setUpdateMode(mode)).data,
+    onSuccess: (res) => {
+      toast({ title: "Режим обновления изменён", description: res.mode === "auto" ? "Новые версии ставятся автоматически" : "Обновления только по кнопке" });
+      refetch();
+    },
+    onError: (error: { response?: { data?: { detail?: string } } }) =>
+      toast({
+        title: "Ошибка",
+        description: apiErrorMessage(error, "Не удалось изменить режим"),
       }),
   });
 
@@ -1076,22 +1098,61 @@ function UpdateTab() {
     return <p className="text-sm text-muted-foreground">Загрузка версии…</p>;
   }
 
+  const mode = data.mode === "manual" ? "manual" : "auto";
+  const versionLabel = data.current_tag || (data.current_sha ? `#${data.current_sha}` : "неизвестно");
+  const remoteLabel = data.current_tag && data.remote_sha && data.current_tag !== data.remote_sha
+    ? data.remote_sha
+    : data.remote_sha;
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-base font-semibold">Обновление CRM</h2>
         <p className="text-sm text-muted-foreground">
-          Сервер сам подтягивает новые версии из репозитория раз в минуту.
-          Здесь видно текущую сборку и состояние обновления.
+          Проверяет GitHub-релизы каждые 5 минут. Каждая версия — это тег
+          <span className="font-mono"> v*</span> с zip-архивом; откат — установить предыдущий релиз.
         </p>
       </div>
+
+      {isAdmin && (
+        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+          <div>
+            <p className="text-sm font-medium">Режим установки</p>
+            <p className="text-xs text-muted-foreground">
+              {mode === "auto"
+                ? "Новые версии устанавливаются сразу после проверки"
+                : "Обновление ставится только по кнопке «Проверить и установить»"}
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-1 rounded-md border p-1">
+            <button
+              onClick={() => setMode.mutate("auto")}
+              disabled={setMode.isPending || data.updating}
+              className={cn(
+                "rounded px-3 py-1 text-sm font-medium transition-colors disabled:opacity-50",
+                mode === "auto" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Авто
+            </button>
+            <button
+              onClick={() => setMode.mutate("manual")}
+              disabled={setMode.isPending || data.updating}
+              className={cn(
+                "rounded px-3 py-1 text-sm font-medium transition-colors disabled:opacity-50",
+                mode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Вручную
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border p-3">
           <p className="text-xs text-muted-foreground">Текущая версия</p>
-          <p className="mt-1 font-mono text-sm">
-            {data.current_sha ? `#${data.current_sha}` : "неизвестно"}
-          </p>
+          <p className="mt-1 font-mono text-sm">{versionLabel}</p>
           {data.current_date && (
             <p className="text-xs text-muted-foreground">
               {new Date(data.current_date).toLocaleString("ru-RU")}
@@ -1106,7 +1167,7 @@ function UpdateTab() {
               : "ещё не выполнялась"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {data.auto_update ? "Автообновление: включено (каждую минуту)" : "Автообновление не настроено"}
+            {data.auto_update ? "Автообновление: включено (по расписанию)" : "Автообновление не настроено"}
           </p>
         </div>
       </div>
@@ -1120,8 +1181,10 @@ function UpdateTab() {
 
       {!data.updating && data.update_available && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Доступна новая версия {data.remote_sha ? `#${data.remote_sha}` : ""} —
-          установится автоматически в течение минуты
+          Доступна новая версия {remoteLabel ? `${remoteLabel}` : ""}
+          {mode === "auto"
+            ? " — установится автоматически в течение минуты"
+            : " — нажмите «Проверить и установить»"}
         </div>
       )}
 
@@ -1138,7 +1201,11 @@ function UpdateTab() {
           className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
           <RefreshCw className={cn("h-4 w-4", check.isPending && "animate-spin")} />
-          {check.isPending ? "Проверяем…" : "Проверить обновления сейчас"}
+          {check.isPending
+            ? "Проверяем…"
+            : mode === "manual"
+              ? "Проверить и установить"
+              : "Проверить обновления сейчас"}
         </button>
       )}
 
@@ -1153,18 +1220,25 @@ function UpdateTab() {
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabKey>("general");
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
+
+  const tabs = TABS.filter((item) => !item.adminOnly || isAdmin);
 
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("tab");
     if (
       wanted === "general" ||
       wanted === "account" ||
+      wanted === "users" ||
       wanted === "integrations" ||
       wanted === "update"
     ) {
       setTab(wanted);
     }
   }, []);
+
+  // Невидимую вкладку (не-admin заходил по прямой ссылке) не показываем
+  const activeTab = tabs.some((item) => item.key === tab) ? tab : "general";
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -1174,12 +1248,12 @@ export default function SettingsPage() {
           Настройки
         </h1>
         <p className="text-sm text-muted-foreground">
-          Реквизиты компании, данные аккаунта и подключённые сервисы.
+          Реквизиты компании, данные аккаунта, сотрудники и подключённые сервисы.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-lg border p-1">
-        {TABS.map((item) => {
+        {tabs.map((item) => {
           const Icon = item.icon;
           return (
             <button
@@ -1187,7 +1261,7 @@ export default function SettingsPage() {
               onClick={() => setTab(item.key)}
               className={cn(
                 "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                tab === item.key
+                activeTab === item.key
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"
               )}
@@ -1200,10 +1274,11 @@ export default function SettingsPage() {
       </div>
 
       <div className="rounded-lg border p-5">
-        {tab === "general" && <GeneralTab />}
-        {tab === "account" && <AccountTab />}
-        {tab === "integrations" && <IntegrationsTab />}
-        {tab === "update" && <UpdateTab />}
+        {activeTab === "general" && <GeneralTab />}
+        {activeTab === "account" && <AccountTab />}
+        {activeTab === "users" && <UsersTab />}
+        {activeTab === "integrations" && <IntegrationsTab />}
+        {activeTab === "update" && <UpdateTab />}
       </div>
     </div>
   );

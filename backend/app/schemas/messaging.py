@@ -66,6 +66,8 @@ class MessageResponse(BaseModel):
     direction: str
     content: str
     is_read: bool = False
+    # Для исходящих: False — канал не принял сообщение (причина в note)
+    delivered: Optional[bool] = None
     author_name: Optional[str] = None
     subject: Optional[str] = None
     created_at: datetime

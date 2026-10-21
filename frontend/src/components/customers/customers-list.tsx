@@ -5,6 +5,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  EyeOff,
   Upload,
   User,
   Phone,
@@ -38,7 +39,8 @@ import {
 } from "@/components/ui/select";
 import { customersApi, api, API_URL } from "@/lib/api";
 import { ChannelIcon } from "@/components/channel-icon";
-import { cn } from "@/lib/utils";
+import { apiErrorMessage, cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 
 interface CustomerDoc {
   id: string;
@@ -257,7 +259,7 @@ function contactPlaceholder(channel: string): string {
     case "email":
       return "mail@example.com";
     case "telegram":
-      return "@username или +79001234567";
+      return "@username";
     case "vk":
       return "screen name или ссылка";
     case "avito":
@@ -366,7 +368,7 @@ function ContactPointsSection({
       await api.delete(`/conversations/contacts/${id}`);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось удалить контакт");
+      setError(apiErrorMessage(err, "Не удалось удалить контакт"));
     } finally {
       setBusy(false);
     }
@@ -470,7 +472,7 @@ function ContactPointsSection({
       });
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось изменить контакт");
+      setError(apiErrorMessage(err, "Не удалось изменить контакт"));
     } finally {
       setBusy(false);
     }
@@ -757,6 +759,10 @@ export function CustomerDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -806,7 +812,7 @@ export function CustomerDialog({
       const res = await customersApi.get(customerId);
       hydrate(res.data as Customer);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить клиента");
+      setError(apiErrorMessage(err, "Не удалось загрузить клиента"));
     } finally {
       setLoading(false);
     }
@@ -847,7 +853,7 @@ export function CustomerDialog({
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось сохранить");
+      setError(apiErrorMessage(err, "Не удалось сохранить"));
     } finally {
       setSaving(false);
     }
@@ -862,7 +868,7 @@ export function CustomerDialog({
       await load();
       onSaved();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить документ");
+      setError(apiErrorMessage(err, "Не удалось загрузить документ"));
     } finally {
       setSaving(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -877,9 +883,29 @@ export function CustomerDialog({
       await load();
       onSaved();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось удалить документ");
+      setError(apiErrorMessage(err, "Не удалось удалить документ"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const removeCustomer = async () => {
+    if (!customer) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await customersApi.remove(customer.id);
+      toast({
+        title: "Клиент скрыт",
+        description: customer.full_name,
+      });
+      onSaved();
+      setConfirmDelete(false);
+      onOpenChange(false);
+    } catch (err: any) {
+      setDeleteError(apiErrorMessage(err, "Не удалось удалить клиента"));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -887,6 +913,7 @@ export function CustomerDialog({
   const needsDocs = (customer?.documents.length ?? 0) === 0;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-4 pt-5 pr-11">
@@ -1209,7 +1236,19 @@ export function CustomerDialog({
         </div>
 
         <div className="shrink-0 border-t bg-white px-5 py-3">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => {
+                setDeleteError("");
+                setConfirmDelete(true);
+              }}
+              disabled={saving || !customer}
+            >
+              <EyeOff className="mr-2 h-4 w-4" aria-hidden />
+              Скрыть
+            </Button>
             <Button onClick={save} disabled={saving || !customer}>
               {saving ? "Сохраняем…" : "Сохранить"}
             </Button>
@@ -1217,6 +1256,43 @@ export function CustomerDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={confirmDelete}
+      onOpenChange={(v) => {
+        if (!deleting) setConfirmDelete(v);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Скрыть клиента?</DialogTitle>
+          <DialogDescription>
+            Карточка «{customer?.full_name}» уйдёт из списка и поиска, но
+            переписка, документы, история аренд и статистика сохранятся.
+          </DialogDescription>
+        </DialogHeader>
+
+        {deleteError && (
+          <p className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+            {deleteError}
+          </p>
+        )}
+
+        <DialogFooter className="justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setConfirmDelete(false)}
+            disabled={deleting}
+          >
+            Отмена
+          </Button>
+          <Button variant="destructive" onClick={removeCustomer} disabled={deleting}>
+            {deleting ? "Скрываем…" : "Скрыть"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -1261,7 +1337,7 @@ function AddCustomerDialog({ onCreated }: { onCreated: () => void }) {
       setBirthDate("");
       onCreated();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось создать клиента");
+      setError(apiErrorMessage(err, "Не удалось создать клиента"));
     } finally {
       setSaving(false);
     }
@@ -1429,7 +1505,7 @@ export function CustomersList() {
       setCustomers((res.data?.items ?? []) as Customer[]);
       setTotal(res.data?.total ?? 0);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить клиентов");
+      setError(apiErrorMessage(err, "Не удалось загрузить клиентов"));
     } finally {
       setLoading(false);
     }

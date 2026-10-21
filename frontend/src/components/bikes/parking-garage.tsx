@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { bikesApi, API_URL } from "@/lib/api";
-import { formatCurrency, cn } from "@/lib/utils";
+import { apiErrorMessage, formatCurrency, cn } from "@/lib/utils";
 
 interface PriceRow {
   duration_min: number;
@@ -288,7 +288,7 @@ export function BikeDialog({
       const res = await bikesApi.get(bikeId);
       hydrate(res.data as BikeItem);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить байк");
+      setError(apiErrorMessage(err, "Не удалось загрузить байк"));
     } finally {
       setLoading(false);
     }
@@ -315,7 +315,7 @@ export function BikeDialog({
       hydrate(res.data as BikeItem);
       onSaved();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось изменить статус");
+      setError(apiErrorMessage(err, "Не удалось изменить статус"));
     } finally {
       setSaving(false);
     }
@@ -347,7 +347,7 @@ export function BikeDialog({
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось сохранить");
+      setError(apiErrorMessage(err, "Не удалось сохранить"));
     } finally {
       setSaving(false);
     }
@@ -362,7 +362,7 @@ export function BikeDialog({
       hydrate(res.data as BikeItem);
       onSaved();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить фото");
+      setError(apiErrorMessage(err, "Не удалось загрузить фото"));
     } finally {
       setSaving(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -686,7 +686,7 @@ function AddBikeDialog({
       setMonthPrice("");
       onCreated();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось добавить байк");
+      setError(apiErrorMessage(err, "Не удалось добавить байк"));
     } finally {
       setSaving(false);
     }
@@ -818,7 +818,7 @@ export function ParkingGarage() {
       setBikes((bikesRes.data?.items ?? []) as BikeItem[]);
       setBranches((brRes.data?.items ?? []) as Branch[]);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить гараж");
+      setError(apiErrorMessage(err, "Не удалось загрузить гараж"));
     } finally {
       setLoading(false);
     }
@@ -837,7 +837,7 @@ export function ParkingGarage() {
       setToDelete(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось удалить байк");
+      setError(apiErrorMessage(err, "Не удалось удалить байк"));
       setToDelete(null);
     } finally {
       setDeleting(false);

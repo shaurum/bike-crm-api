@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { apiErrorMessage } from "@/lib/utils";
 
 type Phase = "working" | "done" | "failed";
 
@@ -37,12 +38,11 @@ export default function AvitoCallbackPage() {
         await api.post("/settings/integrations/avito/callback", { code });
         if (!cancelled) setPhase("done");
       } catch (error) {
-        const detail = (
-          error as { response?: { data?: { detail?: string } } }
-        )?.response?.data?.detail;
         if (!cancelled) {
           setPhase("failed");
-          setMessage(detail || "Не удалось сохранить доступ к Авито");
+          setMessage(
+            apiErrorMessage(error, "Не удалось сохранить доступ к Авито")
+          );
         }
       }
     })();

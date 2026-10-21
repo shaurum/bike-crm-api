@@ -324,6 +324,8 @@ async def _ingest(
             subject=subject,
             external_msg_id=msg_id,
             external_id=external_id,
+            phone=phone,
+            email=email,
             meta=meta,
         )
     except DuplicateMessage as exc:

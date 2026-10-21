@@ -52,7 +52,7 @@ async def list_customers(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(Customer)
+    query = select(Customer).where(Customer.deleted_at.is_(None))
 
     if search:
         pattern = f"%{search}%"
@@ -92,7 +92,7 @@ async def _get_customer(db: AsyncSession, customer_id: UUID) -> Customer:
         _load(select(Customer)).where(Customer.id == customer_id)
     )
     customer = result.scalar_one_or_none()
-    if not customer:
+    if not customer or customer.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Клиент не найден")
     return customer
 
@@ -115,12 +115,13 @@ async def create_customer(
     existing = (
         await db.execute(
             select(Customer.id).where(
+                Customer.deleted_at.is_(None),
                 or_(
                     Customer.phone == payload.phone,
                     Customer.email == payload.email
                     if payload.email
                     else False,
-                )
+                ),
             )
         )
     ).scalars().first()
@@ -226,7 +227,7 @@ async def update_customer(
     current_user: User = Depends(get_current_user),
 ):
     customer = await db.get(Customer, customer_id)
-    if not customer:
+    if not customer or customer.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Клиент не найден")
 
     old_phone, old_email = customer.phone, customer.email
@@ -248,24 +249,14 @@ async def delete_customer(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from app.models import Booking
-
-    has_bookings = (
-        await db.execute(
-            select(Booking.id).where(Booking.customer_id == customer_id).limit(1)
-        )
-    ).scalars().first()
-    if has_bookings:
-        raise HTTPException(
-            status_code=409,
-            detail="Нельзя удалить клиента с историей аренды — отметьте в стоп-листе",
-        )
-
+    """Скрывает карточку: переписка, документы, история и статистика сохраняются."""
     customer = await db.get(Customer, customer_id)
-    if not customer:
+    if not customer or customer.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Клиент не найден")
 
-    await db.delete(customer)
+    from datetime import datetime, timezone
+
+    customer.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     return None
 
@@ -287,7 +278,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     customer = await db.get(Customer, customer_id)
-    if not customer:
+    if not customer or customer.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Клиент не найден")
 
     ext = ALLOWED_DOC_TYPES.get(file.content_type or "")

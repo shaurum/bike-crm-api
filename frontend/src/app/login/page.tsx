@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "@/lib/utils";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,7 @@ export default function LoginPage() {
       router.push("/");
       router.refresh();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Неверный email или пароль");
+      setError(apiErrorMessage(err, "Неверный email или пароль"));
     } finally {
       setLoading(false);
     }

@@ -139,7 +139,7 @@ async def generate_document(
         raise HTTPException(status_code=400, detail="Укажите сделку")
 
     lead = await db.get(Lead, payload.lead_id)
-    if not lead:
+    if not lead or lead.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
 
     customer = (
@@ -157,8 +157,15 @@ async def generate_document(
         await db.execute(select(CompanyProfile).order_by(CompanyProfile.created_at))
     ).scalars().first()
 
-    count = await db.scalar(select(func.count()).select_from(Document.__table__))
-    number = doc_service.next_document_number(count or 0)
+    # Номер считаем по максимальному существующему, а не по количеству:
+    # иначе после удаления документа номера начнут повторяться
+    numbers = (await db.execute(select(Document.number))).scalars().all()
+    max_number = 0
+    for num in numbers:
+        digits = "".join(ch for ch in (num or "") if ch.isdigit())
+        if digits:
+            max_number = max(max_number, int(digits))
+    number = doc_service.next_document_number(max_number)
 
     context = doc_service.build_contract_context(lead, customer, bike, company, number)
 

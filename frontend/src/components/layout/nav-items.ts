@@ -7,7 +7,6 @@ import {
   MessageSquare,
   ListChecks,
   Settings,
-  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,5 +27,4 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/messages", label: "Сообщения", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: ListChecks },
   { href: "/settings", label: "Настройки", icon: Settings },
-  { href: "/users", label: "Пользователи", icon: ShieldCheck, adminOnly: true },
 ];

@@ -73,12 +73,39 @@ def normalize_value(channel: str, value: str) -> str:
     return raw
 
 
-async def _find_contact(db: AsyncSession, channel: str, value: str):
+async def _find_contact(
+    db: AsyncSession,
+    channel: str,
+    value: str,
+    external_id: Optional[str] = None,
+):
+    """Контакт канала: сначала по точному адресу, затем по внешнему id (chat_id).
+
+    Активные клиенты предпочтительнее скрытых: новое сообщение уходит живому
+    карточке, а не в архив. Чат конкретного человека уникален, поэтому контакт,
+    добавленный вручную по @username, находится и по числовому chat_id.
+    """
     result = await db.execute(
-        select(ContactPoint).where(
+        select(ContactPoint)
+        .join(Customer, ContactPoint.customer_id == Customer.id)
+        .where(
             ContactPoint.channel == channel,
             ContactPoint.value == value,
         )
+        .order_by(Customer.deleted_at.is_(None).desc(), ContactPoint.created_at)
+    )
+    contact = result.scalars().first()
+    if contact or not external_id:
+        return contact
+
+    result = await db.execute(
+        select(ContactPoint)
+        .join(Customer, ContactPoint.customer_id == Customer.id)
+        .where(
+            ContactPoint.channel == channel,
+            ContactPoint.external_id == external_id,
+        )
+        .order_by(Customer.deleted_at.is_(None).desc(), ContactPoint.created_at)
     )
     return result.scalars().first()
 
@@ -89,9 +116,10 @@ async def _find_customer(
     value: str,
     email: Optional[str],
     phone: Optional[str],
+    external_id: Optional[str] = None,
 ):
     """Ищем клиента по контактам. Важно: ищем и по позапрошлому каналу."""
-    contact = await _find_contact(db, channel, value)
+    contact = await _find_contact(db, channel, value, external_id=external_id)
     if contact:
         return await db.get(Customer, contact.customer_id)
 
@@ -139,6 +167,7 @@ async def _find_active_lead(db: AsyncSession, customer_id: uuid.UUID) -> Optiona
         select(Lead).where(
             Lead.customer_id == customer_id,
             Lead.status.in_(ACTIVE_STATUSES),
+            Lead.deleted_at.is_(None),
         ).order_by(Lead.created_at.desc())
     )
     return result.scalars().first()
@@ -154,6 +183,8 @@ async def ingest_inbound(
     subject: Optional[str] = None,
     external_msg_id: Optional[str] = None,
     external_id: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
     meta: Optional[dict] = None,
 ) -> IngestResult:
     """Принимает входящее сообщение и кладёт его в правильный чат."""
@@ -170,10 +201,12 @@ async def ingest_inbound(
         if dup.first():
             raise DuplicateMessage(external_msg_id)
 
-    email = value if channel == "email" else None
-    phone = value if channel == "phone" else None
+    email = email or (value if channel == "email" else None)
+    phone = phone or (value if channel == "phone" else None)
 
-    customer = await _find_customer(db, channel, value, email=email, phone=phone)
+    customer = await _find_customer(
+        db, channel, value, email=email, phone=phone, external_id=external_id
+    )
     created_customer = False
 
     if not customer:

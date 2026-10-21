@@ -19,7 +19,7 @@ import { toast } from "@/hooks/use-toast";
 
 import { ChannelIcon } from "@/components/channel-icon";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { apiErrorMessage, cn } from "@/lib/utils";
 
 interface ConversationItem {
   id: string;
@@ -52,6 +52,8 @@ interface MessageItem {
   direction: string;
   content: string;
   is_read: boolean;
+  /** false — канал не принял сообщение (например, Telegram не подключён). */
+  delivered?: boolean | null;
   author_name: string | null;
   subject: string | null;
   created_at: string;
@@ -293,11 +295,9 @@ function ContactsPanel({
       queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
     onError: (error: { response?: { data?: { detail?: unknown } } }) => {
-      const detail = error.response?.data?.detail;
       toast({
         title: "Не удалось добавить",
-        description:
-          typeof detail === "string" ? detail : "Ошибка сохранения",
+        description: apiErrorMessage(error, "Ошибка сохранения"),
       });
     },
   });
@@ -312,11 +312,9 @@ function ContactsPanel({
       queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
     onError: (error: { response?: { data?: { detail?: unknown } } }) => {
-      const detail = error.response?.data?.detail;
       toast({
         title: "Не удалось удалить",
-        description:
-          typeof detail === "string" ? detail : "Ошибка удаления",
+        description: apiErrorMessage(error, "Ошибка удаления"),
       });
     },
   });
@@ -389,7 +387,13 @@ function ContactsPanel({
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder={channel === "email" ? "mail@example.com" : "+79001234567"}
+            placeholder={
+              channel === "email"
+                ? "mail@example.com"
+                : channel === "telegram"
+                  ? "@username"
+                  : "+79001234567"
+            }
             className="w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
           />
           <input
@@ -451,8 +455,17 @@ function Thread({
     return hidden;
   }, [conversation.contacts]);
 
+  // Переключение диалога: сбрасываем канал и черновик. Иначе канал,
+  // выбранный в прошлом чате, остаётся здесь — отправка уходит не туда
+  // или падает с «У клиента нет контакта в канале».
   useEffect(() => {
-    if (sendable.length > 0 && !channel) {
+    setChannel("");
+    setText("");
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (sendable.length === 0) return;
+    if (!channel || !sendable.some((c) => c.channel === channel)) {
       const primary = sendable.find((c) => c.is_primary) || sendable[0];
       setChannel(primary.channel);
     }
@@ -482,10 +495,9 @@ function Thread({
       queryClient.invalidateQueries({ queryKey: ["conversation", conversation.id] });
     },
     onError: (error: { response?: { data?: { detail?: unknown } } }) => {
-      const detail = error.response?.data?.detail;
       toast({
         title: "Не удалось отправить",
-        description: typeof detail === "string" ? detail : "Ошибка отправки",
+        description: apiErrorMessage(error, "Ошибка отправки"),
       });
     },
   });
@@ -552,6 +564,9 @@ function Thread({
                     )}
                     {unread && (
                       <span className="font-medium">не прочитано</span>
+                    )}
+                    {outbound && message.delivered === false && (
+                      <span className="font-semibold">не доставлено</span>
                     )}
                   </div>
                 </div>
@@ -692,7 +707,7 @@ export default function MessagesPage() {
     onError: (error: { response?: { data?: { detail?: string } } }) => {
       toast({
         title: "Не удалось изменить статус чата",
-        description: error.response?.data?.detail || "Ошибка сохранения",
+        description: apiErrorMessage(error, "Ошибка сохранения"),
       });
     },
     onSettled: () => {
@@ -739,7 +754,7 @@ export default function MessagesPage() {
               className="w-full rounded-md border bg-background py-2 pl-8 pr-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {[
               { key: "all", label: "Все" },
               { key: "active", label: "В аренде" },
@@ -747,9 +762,12 @@ export default function MessagesPage() {
             ].map((item) => (
               <button
                 key={item.key}
-                onClick={() => setFilter(item.key)}
+                onClick={() => {
+                  setFilter(item.key);
+                  setArchivedView(false);
+                }}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium",
+                  "whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium",
                   filter === item.key && !archivedView
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted"
@@ -758,10 +776,21 @@ export default function MessagesPage() {
                 {item.label}
               </button>
             ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
             <button
-              onClick={() => setArchivedView((v) => !v)}
+              onClick={() => {
+                // «Архив» и обычные фильтры взаимоисключающие:
+                // вход в архив сбрасывает фильтр, любой фильтр выходит из архива
+                if (archivedView) {
+                  setArchivedView(false);
+                } else {
+                  setFilter("all");
+                  setArchivedView(true);
+                }
+              }}
               className={cn(
-                "ml-auto inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium",
+                "inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium",
                 archivedView
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"
@@ -776,7 +805,7 @@ export default function MessagesPage() {
             <button
               onClick={() => readAll.mutate()}
               disabled={readAll.isPending}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
               title="Отметить все диалоги прочитанными"
             >
               <CheckCheck className="h-3.5 w-3.5" />
@@ -787,7 +816,7 @@ export default function MessagesPage() {
                 queryClient.invalidateQueries({ queryKey: ["conversations"] });
                 queryClient.invalidateQueries({ queryKey: ["conversation"] });
               }}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              className="ml-auto inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               title="Обновить сообщения"
             >
               <RotateCw className="h-3.5 w-3.5" />

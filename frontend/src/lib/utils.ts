@@ -5,6 +5,48 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Человекочитаемый текст ошибки из ответа API.
+ *
+ * FastAPI умеет отдавать detail не строкой: объект-дубль контакта
+ * (code/scope/…) или массив ошибок валидации. Рендерить такие значения
+ * в React нельзя — получаем «Objects are not valid as a React child».
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const detail = (
+    err as { response?: { data?: { detail?: unknown } } }
+  )?.response?.data?.detail;
+
+  if (typeof detail === "string" && detail) return detail;
+
+  if (Array.isArray(detail)) {
+    const first = detail[0];
+    if (typeof first === "string" && first) return first;
+    if (first && typeof first === "object" && typeof (first as { msg?: unknown }).msg === "string") {
+      return (first as { msg: string }).msg;
+    }
+    return fallback;
+  }
+
+  if (detail && typeof detail === "object") {
+    const d = detail as Record<string, unknown>;
+    if (d.code === "duplicate") {
+      const value = typeof d.value === "string" ? d.value : "";
+      const name = typeof d.customer_name === "string" ? d.customer_name : "";
+      if (d.scope === "same") return `Контакт «${value}» уже есть у этого клиента`;
+      return `Контакт «${value}» уже используется${name ? ` у «${name}»` : ""}`;
+    }
+    if (typeof d.detail === "string" && d.detail) return d.detail;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
 export function formatDate(date: string | Date, format: string = "dd.MM.yyyy"): string {
   const d = new Date(date);
   const day = String(d.getDate()).padStart(2, "0");

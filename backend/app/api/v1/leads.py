@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID, uuid4
@@ -84,10 +84,14 @@ async def list_leads(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(Lead).options(
-        selectinload(Lead.source),
-        selectinload(Lead.stage),
-        selectinload(Lead.assigned_to),
+    query = (
+        select(Lead)
+        .where(Lead.deleted_at.is_(None))
+        .options(
+            selectinload(Lead.source),
+            selectinload(Lead.stage),
+            selectinload(Lead.assigned_to),
+        )
     )
 
     if status:
@@ -142,7 +146,7 @@ async def create_lead(
         from app.models import Customer
 
         customer = await db.get(Customer, payload.customer_id)
-        if not customer:
+        if not customer or customer.deleted_at is not None:
             raise HTTPException(status_code=404, detail="Клиент не найден")
 
     lead = Lead(
@@ -202,7 +206,7 @@ async def get_lead(
             selectinload(Lead.messages),
             selectinload(Lead.tasks),
         )
-        .where(Lead.id == lead_id)
+        .where(Lead.id == lead_id, Lead.deleted_at.is_(None))
     )
     lead = result.scalar_one_or_none()
     if not lead:
@@ -216,7 +220,7 @@ TERMINAL_STAGES = {"Завершён", "Отказ"}
 
 async def ensure_bike_is_free(db: AsyncSession, bike_id: UUID, lead_id) -> None:
     """Нельзя выдать байк, который уже занят другой незакрытой сделкой."""
-    stmt = select(Lead.id).where(Lead.bike_id == bike_id)
+    stmt = select(Lead.id).where(Lead.bike_id == bike_id, Lead.deleted_at.is_(None))
     if lead_id is not None:
         stmt = stmt.where(Lead.id != lead_id)
 
@@ -250,7 +254,11 @@ async def release_bike(db: AsyncSession, bike_id: UUID) -> None:
         await db.execute(
             select(Lead.id)
             .join(PipelineStage, Lead.stage_id == PipelineStage.id)
-            .where(Lead.bike_id == bike_id, PipelineStage.name.notin_(TERMINAL_STAGES))
+            .where(
+                Lead.bike_id == bike_id,
+                Lead.deleted_at.is_(None),
+                PipelineStage.name.notin_(TERMINAL_STAGES),
+            )
             .limit(1)
         )
     ).scalars().first()
@@ -267,17 +275,29 @@ async def delete_lead(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    """Скрывает лид: воронка, статистика, история и комментарии сохраняются."""
+    result = await db.execute(
+        select(Lead).where(Lead.id == lead_id, Lead.deleted_at.is_(None))
+    )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
 
     bike_id = lead.bike_id
 
-    # Задачи ссылаются на лид через SET NULL — удаляем явно, чтобы не осталось мусора
-    await db.execute(delete(Task).where(Task.related_lead_id == lead_id))
+    from datetime import datetime, timezone
 
-    await db.delete(lead)
+    lead.deleted_at = datetime.now(timezone.utc)
+
+    # Активные задачи скрытого лида завершаем — в работе они больше не нужны
+    await db.execute(
+        update(Task)
+        .where(
+            Task.related_lead_id == lead_id,
+            Task.status.in_((TaskStatus.TODO, TaskStatus.IN_PROGRESS)),
+        )
+        .values(status=TaskStatus.CANCELLED)
+    )
     await db.commit()
 
     # Освобождаем байк: без сделки он не должен висеть в аренде или резерве
@@ -294,7 +314,9 @@ async def update_deal(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    result = await db.execute(
+        select(Lead).where(Lead.id == lead_id, Lead.deleted_at.is_(None))
+    )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
@@ -332,7 +354,8 @@ async def list_comments(
     result = await db.execute(
         select(LeadComment)
         .options(selectinload(LeadComment.author))
-        .where(LeadComment.lead_id == lead_id)
+        .join(Lead, Lead.id == LeadComment.lead_id)
+        .where(LeadComment.lead_id == lead_id, Lead.deleted_at.is_(None))
         .order_by(LeadComment.created_at)
     )
     return result.scalars().all()
@@ -349,7 +372,10 @@ async def add_comment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    exists = await db.get(Lead, lead_id)
+    result = await db.execute(
+        select(Lead).where(Lead.id == lead_id, Lead.deleted_at.is_(None))
+    )
+    exists = result.scalar_one_or_none()
     if not exists:
         raise HTTPException(status_code=404, detail="Лид не найден")
 
@@ -376,7 +402,9 @@ async def assign_lead(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    result = await db.execute(
+        select(Lead).where(Lead.id == lead_id, Lead.deleted_at.is_(None))
+    )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")
@@ -394,7 +422,9 @@ async def change_stage(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    result = await db.execute(
+        select(Lead).where(Lead.id == lead_id, Lead.deleted_at.is_(None))
+    )
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(status_code=404, detail="Лид не найден")

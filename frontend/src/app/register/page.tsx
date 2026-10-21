@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "@/lib/utils";
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -106,7 +108,7 @@ export default function RegisterPage() {
       router.push("/");
       router.refresh();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Ошибка регистрации");
+      setError(apiErrorMessage(err, "Ошибка регистрации"));
     } finally {
       setLoading(false);
     }

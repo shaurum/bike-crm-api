@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy import String, Text, Integer, ForeignKey, Enum as SQLEnum, Index, JSON, Boolean, DateTime, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from app.models.base import Base, UUIDMixin, TimestampMixin
+from app.models.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
 
 
 class LeadSourceType(str, enum.Enum):
@@ -94,7 +94,7 @@ class PipelineStage(UUIDMixin, TimestampMixin, Base):
     )
 
 
-class Lead(UUIDMixin, TimestampMixin, Base):
+class Lead(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "lead"
 
     source_id: Mapped[uuid.UUID] = mapped_column(

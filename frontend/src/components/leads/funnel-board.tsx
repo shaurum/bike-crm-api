@@ -53,7 +53,7 @@ import {
   readHiddenStages,
 } from "@/components/leads/column-visibility-menu";
 import { useIsDesktop } from "@/hooks/use-media-query";
-import { cn } from "@/lib/utils";
+import { apiErrorMessage, cn } from "@/lib/utils";
 
 interface Stage {
   id: string;
@@ -108,6 +108,8 @@ function AddLeadDialog({
   const [sourceId, setSourceId] = useState<string>(NO_SOURCE);
   const [customer, setCustomer] = useState<PickedCustomer | null>(null);
   const [typedName, setTypedName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -125,14 +127,15 @@ function AddLeadDialog({
         source_id: sourceId,
         customer_id: customer?.id ?? null,
         client_name: customer?.full_name ?? typedName.trim() ?? undefined,
-        client_email: customer?.email ?? undefined,
+        client_phone: (customer?.phone || phone.trim()) || undefined,
+        client_email: (customer?.email || email.trim()) || undefined,
         initial_message: message || undefined,
       });
       setOpen(false);
       setMessage("");
       onCreated();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось создать лид");
+      setError(apiErrorMessage(err, "Не удалось создать лид"));
     } finally {
       setSaving(false);
     }
@@ -145,6 +148,8 @@ function AddLeadDialog({
         setOpen(v);
         if (v) {
           setSourceId(sources.find((s) => s.type === "manual")?.id ?? NO_SOURCE);
+          setPhone("");
+          setEmail("");
           setError("");
         }
       }}
@@ -194,6 +199,35 @@ function AddLeadDialog({
               Если клиента нет в базе — создайте его прямо отсюда
             </p>
           </div>
+
+          {!customer && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="lead-phone">
+                  Телефон
+                </label>
+                <Input
+                  id="lead-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+79001234567"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="lead-email">
+                  Email
+                </label>
+                <Input
+                  id="lead-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="mail@example.com"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="lead-message">
@@ -621,7 +655,7 @@ export function FunnelBoard() {
       setLeads(loadedLeads);
       setColumns(group(loadedLeads));
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить воронку");
+      setError(apiErrorMessage(err, "Не удалось загрузить воронку"));
     } finally {
       setLoading(false);
     }
@@ -744,7 +778,7 @@ export function FunnelBoard() {
       setToDelete(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось удалить лид");
+      setError(apiErrorMessage(err, "Не удалось скрыть лид"));
       setToDelete(null);
     } finally {
       setDeleting(false);
@@ -894,11 +928,12 @@ export function FunnelBoard() {
       <Dialog open={toDelete !== null} onOpenChange={(v) => !v && setToDelete(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Удалить лид?</DialogTitle>
+            <DialogTitle>Скрыть лид?</DialogTitle>
             <DialogDescription>
               {toDelete?.client_name || "Без имени"}
-              {toDelete?.client_phone ? ` · ${toDelete.client_phone}` : ""}. Действие
-              необратимо: вместе с лидом удалятся его комментарии и задачи.
+              {toDelete?.client_phone ? ` · ${toDelete.client_phone}` : ""}. Лид уйдёт
+              из воронки и перестанет учитываться в статистике, но история,
+              комментарии и сообщения сохранятся.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -906,7 +941,7 @@ export function FunnelBoard() {
               Отмена
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
-              {deleting ? "Удаляем…" : "Удалить"}
+              {deleting ? "Скрываем…" : "Скрыть"}
             </Button>
           </DialogFooter>
         </DialogContent>

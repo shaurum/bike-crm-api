@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "@/lib/utils";
+
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
@@ -100,7 +102,7 @@ export function CustomerCreateDialog({
       setSeries("");
       setNumber("");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось создать клиента");
+      setError(apiErrorMessage(err, "Не удалось создать клиента"));
     } finally {
       setSaving(false);
     }

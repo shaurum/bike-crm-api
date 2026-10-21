@@ -161,7 +161,7 @@ class CustomerDocumentType(str, enum.Enum):
     OTHER = "other"
 
 
-class Customer(UUIDMixin, TimestampMixin, Base):
+class Customer(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "customer"
 
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="ФИО")

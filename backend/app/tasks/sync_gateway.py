@@ -64,15 +64,21 @@ async def _ingest_event(session: AsyncSession, event: dict) -> None:
         return
 
     chat_id = str(event.get("chat_id") or "")
+    # Ник важнее числового id: иначе входящее не находит клиента, добавленного по @username
+    username = str(event.get("username") or "").strip().lstrip("@")
     await _ingest(
         session,
         channel=source,
-        sender=str(event.get("sender") or chat_id),
+        sender=str(username or event.get("sender") or chat_id),
         content=text,
         name=event.get("sender_name"),
         msg_id=str(event.get("external_id") or "") or None,
         external_id=chat_id or None,
-        meta={"chat_id": chat_id, "gateway_event_id": event.get("id")},
+        meta={
+            "chat_id": chat_id,
+            "gateway_event_id": event.get("id"),
+            **({"tg_user_id": event.get("sender")} if event.get("sender") else {}),
+        },
     )
 
 

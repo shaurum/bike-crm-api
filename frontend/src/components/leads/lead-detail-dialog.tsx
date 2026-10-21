@@ -35,7 +35,7 @@ import {
   CustomerPicker,
   type PickedCustomer,
 } from "@/components/customers/customer-picker";
-import { formatCurrency } from "@/lib/utils";
+import { apiErrorMessage, formatCurrency } from "@/lib/utils";
 
 interface Stage {
   id: string;
@@ -257,7 +257,7 @@ export function LeadDetailDialog({
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось сохранить");
+      setError(apiErrorMessage(err, "Не удалось сохранить"));
     } finally {
       setSaving(false);
     }
@@ -271,7 +271,7 @@ export function LeadDetailDialog({
       setLead({ ...lead, comments: [...lead.comments, res.data] });
       setComment("");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось добавить комментарий");
+      setError(apiErrorMessage(err, "Не удалось добавить комментарий"));
     } finally {
       setSaving(false);
     }
@@ -290,7 +290,7 @@ export function LeadDetailDialog({
       const docsRes = await documentsApi.list({ lead_id: lead.id, size: 50 });
       setDocs((docsRes.data?.items ?? []) as DealDoc[]);
     } catch (err: any) {
-      setGenError(err.response?.data?.detail || "Не удалось сформировать документ");
+      setGenError(apiErrorMessage(err, "Не удалось сформировать документ"));
     } finally {
       setGenerating(false);
     }

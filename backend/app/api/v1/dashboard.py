@@ -55,12 +55,18 @@ async def get_dashboard_stats(
         )
     )
 
-    leads_total = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= since))
+    leads_total = await db.scalar(
+        select(func.count(Lead.id)).where(Lead.created_at >= since, Lead.deleted_at.is_(None))
+    )
     leads_new = await db.scalar(
-        select(func.count(Lead.id)).where(Lead.created_at >= since, Lead.status == LeadStatus.NEW)
+        select(func.count(Lead.id)).where(
+            Lead.created_at >= since, Lead.status == LeadStatus.NEW, Lead.deleted_at.is_(None)
+        )
     )
     leads_won = await db.scalar(
-        select(func.count(Lead.id)).where(Lead.created_at >= since, Lead.status == LeadStatus.WON)
+        select(func.count(Lead.id)).where(
+            Lead.created_at >= since, Lead.status == LeadStatus.WON, Lead.deleted_at.is_(None)
+        )
     )
 
     tasks_pending = await db.scalar(
@@ -120,6 +126,7 @@ async def get_funnel(
             select(func.count(Lead.id)).where(
                 Lead.stage_id == stage.id,
                 Lead.created_at >= since,
+                Lead.deleted_at.is_(None),
             )
         )
         funnel.append({
@@ -181,7 +188,7 @@ async def get_leads_by_source(
         select(LeadSource, func.count(Lead.id))
         .join(Lead, Lead.source_id == LeadSource.id, isouter=True)
         .where(LeadSource.is_active == True)
-        .where(Lead.created_at >= since)
+        .where(Lead.created_at >= since, Lead.deleted_at.is_(None))
         .group_by(LeadSource.id)
     )
 

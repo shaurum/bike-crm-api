@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "@/lib/utils";
+
 import { useCallback, useEffect, useState } from "react";
 import {
   FileText,
@@ -108,7 +110,7 @@ function CompanyDialog() {
       const res = await documentsApi.company();
       setData(res.data as Record<string, string>);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить реквизиты");
+      setError(apiErrorMessage(err, "Не удалось загрузить реквизиты"));
     } finally {
       setLoading(false);
     }
@@ -128,7 +130,7 @@ function CompanyDialog() {
       setData(res.data as Record<string, string>);
       setOpen(false);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось сохранить");
+      setError(apiErrorMessage(err, "Не удалось сохранить"));
     } finally {
       setSaving(false);
     }
@@ -231,7 +233,7 @@ function UploadScanDialog({
       setNumber("");
       onUploaded();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить");
+      setError(apiErrorMessage(err, "Не удалось загрузить"));
     } finally {
       setSaving(false);
     }
@@ -343,7 +345,7 @@ export function DocumentsPage() {
       setDocs((docsRes.data?.items ?? []) as DocItem[]);
       setCustomers((custRes.data?.items ?? []) as CustomerOption[]);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось загрузить документы");
+      setError(apiErrorMessage(err, "Не удалось загрузить документы"));
     } finally {
       setLoading(false);
     }
@@ -361,7 +363,7 @@ export function DocumentsPage() {
       setToDelete(null);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось удалить документ");
+      setError(apiErrorMessage(err, "Не удалось удалить документ"));
       setToDelete(null);
     } finally {
       setDeleting(false);
@@ -373,7 +375,7 @@ export function DocumentsPage() {
       await documentsApi.attachSigned(id, file);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось приложить скан");
+      setError(apiErrorMessage(err, "Не удалось приложить скан"));
     }
   };
 
@@ -382,7 +384,7 @@ export function DocumentsPage() {
       await documentsApi.detachSigned(doc.id);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось открепить скан");
+      setError(apiErrorMessage(err, "Не удалось открепить скан"));
     }
   };
 
@@ -391,7 +393,7 @@ export function DocumentsPage() {
       await documentsApi.changeStatus(id, next);
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Не удалось изменить статус");
+      setError(apiErrorMessage(err, "Не удалось изменить статус"));
     }
   };
 

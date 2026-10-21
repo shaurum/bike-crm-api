@@ -201,6 +201,9 @@ async def get_conversation(
             direction=m.direction,
             content=m.content,
             is_read=m.is_read,
+            delivered=(m.meta or {}).get("delivered")
+            if m.direction == "outbound"
+            else None,
             author_name=authors.get(m.author_id) if m.author_id else None,
             subject=(m.meta or {}).get("subject"),
             created_at=m.created_at,
@@ -355,6 +358,7 @@ async def send_message(
             direction=message.direction,
             content=message.content,
             is_read=message.is_read,
+            delivered=note is None,
             author_name=current_user.full_name,
             created_at=message.created_at,
         ),
@@ -388,6 +392,16 @@ async def _deliver(
             address = str(recipient.external_id or "")
             if not address:
                 value = str(recipient.value or "")
+                digits = value.lstrip("+")
+                if (value.startswith("+") and digits.isdigit()) or (
+                    digits.isdigit() and len(digits) >= 11
+                ):
+                    # Номер телефона не является адресом Telegram —
+                    # резолвить его нечем, шлюз вернёт пусто
+                    return (
+                        "По номеру телефона в Telegram написать нельзя — укажите "
+                        "@username клиента или попросите его написать боту первым"
+                    )
                 if value.lstrip("-").isdigit():
                     address = value
                 elif value:
@@ -416,6 +430,15 @@ async def _deliver(
         if not token:
             return "Telegram не подключён — сообщение сохранено в истории"
         address = str(recipient.value or "")
+        digits = address.lstrip("+")
+        if (address.startswith("+") and digits.isdigit()) or (
+            digits.isdigit() and len(digits) >= 11
+        ):
+            # Номер телефона Telegram не поддерживает: нужен @username
+            return (
+                "По номеру телефона в Telegram написать нельзя — укажите "
+                "@username клиента или попросите его написать боту первым"
+            )
         if address and not address.lstrip("-").isdigit():
             address = "@" + address.lstrip("@")
         try:
@@ -423,6 +446,18 @@ async def _deliver(
             return None
         except Exception as exc:  # noqa: BLE001
             logger_warning(str(exc))
+            low = str(exc).lower()
+            if (
+                "chat not found" in low
+                or "bot can't initiate" in low
+                or "peer_id_invalid" in low
+                or "user is deactivated" in low
+            ):
+                return (
+                    "Telegram не даёт боту писать первым: клиент ещё не открывал "
+                    "чат с ботом. Попросите его отправить боту любое сообщение "
+                    "(/start) и повторите отправку"
+                )
             return f"Telegram не отправил сообщение: {exc}"
 
     if channel == "avito":
@@ -563,7 +598,11 @@ async def _duplicate_info(
     stmt = (
         select(ContactPoint, Customer)
         .join(Customer, ContactPoint.customer_id == Customer.id)
-        .where(ContactPoint.channel == channel, ContactPoint.value == value)
+        .where(
+            ContactPoint.channel == channel,
+            ContactPoint.value == value,
+            Customer.deleted_at.is_(None),
+        )
     )
     if exclude_contact_id:
         stmt = stmt.where(ContactPoint.id != exclude_contact_id)

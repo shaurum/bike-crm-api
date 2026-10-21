@@ -24,7 +24,9 @@ async def repair() -> None:
                 continue
 
             linked = (
-                await db.execute(select(Lead.id).where(Lead.bike_id == bike.id).limit(1))
+                await db.execute(
+                    select(Lead.id).where(Lead.bike_id == bike.id, Lead.deleted_at.is_(None)).limit(1)
+                )
             ).scalars().first()
 
             if linked:

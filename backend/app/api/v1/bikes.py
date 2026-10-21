@@ -206,7 +206,11 @@ async def _with_rental_state(db: AsyncSession, bike):
         await db.execute(
             select(Lead.id, Lead.stage_id, PipelineStage.name)
             .join(PipelineStage, Lead.stage_id == PipelineStage.id)
-            .where(Lead.bike_id == bike.id, PipelineStage.name.notin_(TERMINAL_STAGES))
+            .where(
+                Lead.bike_id == bike.id,
+                Lead.deleted_at.is_(None),
+                PipelineStage.name.notin_(TERMINAL_STAGES),
+            )
             .limit(1)
         )
     ).first()
@@ -235,7 +239,9 @@ async def restore_status_from_crm(db: AsyncSession, bike) -> None:
     from app.models import Lead
 
     lead = (
-        await db.execute(select(Lead).where(Lead.bike_id == bike.id))
+        await db.execute(
+            select(Lead).where(Lead.bike_id == bike.id, Lead.deleted_at.is_(None))
+        )
     ).scalars().first()
     if not lead or not lead.stage_id:
         return
