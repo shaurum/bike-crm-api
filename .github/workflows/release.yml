@@ -1,0 +1,31 @@
+name: Release
+
+# Тег v* → GitHub Release с zip исходников.
+# Его скачивают скрипты автообновления (scripts/auto-update.ps1 / auto-update.sh).
+# Откат: удалить тег/релиз или выпустить более новый тег.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Создать Release с zip
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Собрать исходники (без .env, data, .git)
+        run: |
+          git archive --format=zip --prefix=bike-crm/ \
+            -o "bike-crm-${GITHUB_REF_NAME}.zip" HEAD
+
+      - name: Опубликовать Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bike-crm-*.zip
+          generate_release_notes: true

@@ -1,12 +1,14 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Bootstrap a fresh Windows dev machine for bike-crm-api.
   Usage (from repo root):
     powershell -ExecutionPolicy Bypass -File scripts\setup-new-pc.ps1
     powershell -ExecutionPolicy Bypass -File scripts\setup-new-pc.ps1 -EnvFile "F:\path\to\.env"
+    powershell -ExecutionPolicy Bypass -File scripts\setup-new-pc.ps1 -NoAutoUpdate
 #>
 param(
-    [string]$EnvFile = ""
+    [string]$EnvFile = "",
+    [switch]$NoAutoUpdate
 )
 
 # NB: PS 5.1 throws NativeCommandError on native-command stderr when Stop - keep Continue,
@@ -132,7 +134,49 @@ finally {
     Pop-Location
 }
 
-# --- 7. Summary -------------------------------------------------------------
+# --- 7. Release marker & GITHUB_TOKEN ---------------------------------------
+Step "Checking release marker (.release_tag) and GITHUB_TOKEN..."
+$tagPath = Join-Path $root ".release_tag"
+if (-not (Test-Path $tagPath)) {
+    Push-Location $root
+    $tag = git describe --tags --abbrev=0 2>$null
+    Pop-Location
+    if ($tag) {
+        [System.IO.File]::WriteAllText($tagPath, $tag, (New-Object System.Text.UTF8Encoding($false)))
+        Ok ".release_tag = $tag"
+    } else {
+        Warn "no git tags yet - first auto-update will install the latest release"
+    }
+} else {
+    Ok ".release_tag already exists"
+}
+$envPath2 = Join-Path $root ".env"
+$hasToken = $false
+if (Test-Path $envPath2) {
+    foreach ($line in [System.IO.File]::ReadAllLines($envPath2)) {
+        if ($line -match "^\s*GITHUB_TOKEN\s*=\s*\S") { $hasToken = $true; break }
+    }
+}
+if ($hasToken) {
+    Ok "GITHUB_TOKEN is set"
+} else {
+    Warn "GITHUB_TOKEN is empty in .env - auto-update cannot download releases (Fine-grained PAT, Contents: Read)"
+}
+
+# --- 8. Auto-update ---------------------------------------------------------
+if ($NoAutoUpdate) {
+    Warn "Auto-update task skipped (-NoAutoUpdate)"
+} else {
+    Step "Registering auto-update task (every 5 minutes)..."
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\install-auto-update.ps1")
+    if ($LASTEXITCODE -eq 0) {
+        Ok "auto-update registered (Task Scheduler: BikeCrmAutoUpdate)"
+    } else {
+        Warn "auto-update not registered - run manually: scripts\install-auto-update.ps1"
+    }
+}
+
+# --- 9. Summary -------------------------------------------------------------
 Write-Host ""
 Write-Host "Done!" -ForegroundColor Green
 Write-Host "  CRM:      http://localhost:3000"

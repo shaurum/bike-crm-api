@@ -56,6 +56,9 @@ temp/
 celerybeat-schedule
 celerybeat-schedule.db
 
-# Состояние автообновления (пишет cron на сервере)
+# Состояние автообновления (пишут скрипты: cron на VPS / Task Scheduler на Windows)
 backend/.update_state.json
 backend/.update_requested
+backend/.update_mode
+backend/.update.log
+.release_tag

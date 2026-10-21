@@ -1,8 +1,11 @@
 name: Deploy
 
+# Деплой по релизу: тег v* создаёт Release (release.yml) и тут же
+# просит VPS установить его немедленно (обычно VPS подхватывает сам по cron).
+
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:

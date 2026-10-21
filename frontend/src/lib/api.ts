@@ -142,21 +142,25 @@ export const invitesApi = {
     ),
 };
 
-/** Версия CRM и автообновление на сервере. */
+/** Версия CRM и автообновление (GitHub Releases). */
 export interface SystemVersion {
   current_sha: string | null;
   current_date: string | null;
+  current_tag: string | null;
   remote_sha: string | null;
   update_available: boolean;
   updating: boolean;
   last_check: string | null;
   auto_update: boolean;
+  mode: "auto" | "manual";
   note: string | null;
 }
 
 export const systemApi = {
   version: () => api.get<SystemVersion>("/system/version"),
   checkUpdate: () => api.post<{ ok: boolean; detail: string }>("/system/update-check"),
+  setUpdateMode: (mode: "auto" | "manual") =>
+    api.post<{ ok: boolean; mode: string }>("/system/update-mode", { mode }),
 };
 
 export const documentsApi = {
