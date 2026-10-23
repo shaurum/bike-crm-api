@@ -10,6 +10,7 @@ import { site } from '../config/site';
 import bikesData from '../../public/bikes.json';
 
 const bikes = (bikesData as any).bikes || [];
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : import.meta.env.BASE_URL + '/';
 ---
 <Layout title={`${site.name} — Аренда электробайков | ВЖУХ — и поехали!`}>
   <Header />
@@ -34,7 +35,7 @@ const bikes = (bikesData as any).bikes || [];
   </main>
   <footer class="footer">
     <div class="container footer__inner">
-      <img src={import.meta.env.BASE_URL + 'logo.webp'} alt={site.name} class="footer__logo" />
+      <img src={`${base}logo.webp`} alt={site.name} class="footer__logo" />
       <p>© {new Date().getFullYear()} {site.name}. Аренда электробайков.</p>
     </div>
   </footer>
@@ -49,5 +50,5 @@ const bikes = (bikesData as any).bikes || [];
   .bikes-grid { display: grid; gap: clamp(1.2rem, 4vw, 2rem); }
   .footer { border-top: 1px solid var(--border); padding: 2rem 0; }
   .footer__inner { display: flex; flex-direction: column; align-items: center; gap: 0.8rem; text-align: center; }
-  .footer__logo { height: 38px; width: auto; }
+  .footer__logo { height: 38px; width: auto; display: block; }
 </style>
