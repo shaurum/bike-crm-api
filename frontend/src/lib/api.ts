@@ -163,6 +163,47 @@ export const systemApi = {
     api.post<{ ok: boolean; mode: string }>("/system/update-mode", { mode }),
 };
 
+/** Библиотека знаний. */
+export interface KBArticle {
+  id: string;
+  title: string;
+  content: string;
+  category: string | null;
+  is_pinned: boolean;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KBListResponse {
+  items: KBArticle[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
+export const kbApi = {
+  list: (params?: { page?: number; size?: number; q?: string; category?: string }) =>
+    api.get<KBListResponse>("/kb", { params }),
+  get: (id: string) => api.get<KBArticle>(`/kb/${id}`),
+  create: (data: { title: string; content?: string; category?: string | null; is_pinned?: boolean }) =>
+    api.post<KBArticle>("/kb", data),
+  update: (
+    id: string,
+    data: Partial<{ title: string; content: string; category: string | null; is_pinned: boolean }>
+  ) => api.patch<KBArticle>(`/kb/${id}`, data),
+  remove: (id: string) => api.delete<{ ok: boolean }>(`/kb/${id}`),
+  categories: () => api.get<{ items: string[] }>("/kb/categories"),
+  uploadImage: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<{ url: string }>("/kb/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
 export const documentsApi = {
   list: (params?: {
     page?: number;

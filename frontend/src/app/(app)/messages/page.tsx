@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   CheckCheck,
   Lock,
+  Paperclip,
   Plus,
   RotateCw,
   Search,
@@ -13,12 +14,14 @@ import {
   Trash2,
   Unlock,
   User,
+  X,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
 import { ChannelIcon } from "@/components/channel-icon";
-import { api } from "@/lib/api";
+import { CannedRepliesMenu } from "@/components/canned-replies";
+import { API_URL, api } from "@/lib/api";
 import { apiErrorMessage, cn } from "@/lib/utils";
 
 interface ConversationItem {
@@ -46,6 +49,12 @@ interface ContactPoint {
   is_verified: boolean;
 }
 
+interface MessageAttachment {
+  url: string;
+  name?: string | null;
+  content_type?: string | null;
+}
+
 interface MessageItem {
   id: string;
   channel: string;
@@ -56,6 +65,7 @@ interface MessageItem {
   delivered?: boolean | null;
   author_name: string | null;
   subject: string | null;
+  attachments?: MessageAttachment[];
   created_at: string;
 }
 
@@ -432,8 +442,36 @@ function Thread({
 }) {
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [channel, setChannel] = useState<string>("");
+  const [pendingFiles, setPendingFiles] = useState<MessageAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post<MessageAttachment>(
+          `/conversations/${conversation.id}/attachments`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+        setPendingFiles((prev) => [...prev, data]);
+      }
+    } catch (error) {
+      toast({
+        title: "Не удалось загрузить файл",
+        description: apiErrorMessage(error, "Ошибка загрузки"),
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const sendable = useMemo(() => {
     const seen = new Set<string>();
@@ -461,6 +499,7 @@ function Thread({
   useEffect(() => {
     setChannel("");
     setText("");
+    setPendingFiles([]);
   }, [conversation.id]);
 
   useEffect(() => {
@@ -482,12 +521,14 @@ function Thread({
         {
           channel,
           content: text,
+          attachments: pendingFiles.map((f) => f.url),
         }
       );
       return data;
     },
     onSuccess: (res) => {
       setText("");
+      setPendingFiles([]);
       if (res?.note) {
         toast({ title: "Не доставлено", description: res.note });
       }
@@ -502,7 +543,10 @@ function Thread({
     },
   });
 
-  const canSend = Boolean(text.trim()) && Boolean(channel) && !send.isPending;
+  const canSend =
+    Boolean((text.trim() || pendingFiles.length > 0) && channel) &&
+    !send.isPending &&
+    !uploading;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -550,9 +594,61 @@ function Thread({
                       {message.subject}
                     </p>
                   )}
-                  <p className="whitespace-pre-wrap break-words text-sm">
-                    {message.content}
-                  </p>
+                  {message.content && (
+                    <p className="whitespace-pre-wrap break-words text-sm">
+                      {message.content}
+                    </p>
+                  )}
+                  {(message.attachments || []).length > 0 && (
+                    <div
+                      className={cn(
+                        "space-y-1.5",
+                        message.content ? "mt-1.5" : ""
+                      )}
+                    >
+                      {(message.attachments || []).map((attachment) => {
+                        const isImage =
+                          (attachment.content_type || "").startsWith("image/") ||
+                          /\.(jpe?g|png|webp|gif|avif)$/i.test(attachment.url);
+                        const href = /^https?:\/\//.test(attachment.url)
+                          ? attachment.url
+                          : `${API_URL}${attachment.url}`;
+                        if (isImage) {
+                          return (
+                            <a
+                              key={attachment.url}
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block"
+                            >
+                              <img
+                                src={href}
+                                alt={attachment.name || "изображение"}
+                                loading="lazy"
+                                className="max-h-52 max-w-full rounded-md bg-background/40 object-contain"
+                              />
+                            </a>
+                          );
+                        }
+                        return (
+                          <a
+                            key={attachment.url}
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-current/30 px-2 py-1 text-xs underline-offset-2 hover:underline"
+                            title={attachment.name || "Открыть файл"}
+                          >
+                            <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">
+                              {attachment.name || "Вложение"}
+                            </span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center gap-2 text-[10px] opacity-70">
                     <span>{formatTime(message.created_at)}</span>
                     <span className="inline-flex items-center gap-1">
@@ -585,6 +681,44 @@ function Thread({
         }}
         className="border-t p-3"
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip,.heic,.mp3,.ogg,.m4a,.mp4"
+          onChange={(e) => uploadFiles(e.target.files)}
+        />
+        {pendingFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pendingFiles.map((file, index) => (
+              <span
+                key={file.url}
+                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border bg-muted px-2 py-1 text-xs"
+              >
+                <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPendingFiles((prev) =>
+                      prev.filter((_, idx) => idx !== index)
+                    )
+                  }
+                  title="Убрать файл"
+                  className="shrink-0 rounded text-muted-foreground hover:text-red-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {uploading && (
+          <p className="mb-1.5 text-[11px] text-muted-foreground">
+            Загрузка файла…
+          </p>
+        )}
         <div className="flex gap-2">
           <select
             value={channel}
@@ -602,8 +736,26 @@ function Thread({
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Написать сообщение…"
+            placeholder={
+              pendingFiles.length > 0
+                ? "Подпись к вложению…"
+                : "Написать сообщение…"
+            }
             className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            title="Прикрепить файл"
+            className="flex shrink-0 items-center justify-center rounded-md border bg-background px-2.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+          <CannedRepliesMenu
+            onPick={(canned) =>
+              setText((prev) => (prev ? `${prev}\n${canned}` : canned))
+            }
           />
           <button
             type="submit"

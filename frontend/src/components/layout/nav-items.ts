@@ -6,6 +6,7 @@ import {
   FileText,
   MessageSquare,
   ListChecks,
+  BookOpen,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -26,5 +27,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/documents", label: "Документы", icon: FileText },
   { href: "/messages", label: "Сообщения", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: ListChecks },
+  { href: "/knowledge", label: "База знаний", icon: BookOpen },
   { href: "/settings", label: "Настройки", icon: Settings },
 ];

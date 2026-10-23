@@ -1,6 +1,7 @@
 """Забирает события с облачного шлюза и кладёт их в чати CRM."""
 
 import asyncio
+import json
 import logging
 
 from celery import shared_task
@@ -52,13 +53,66 @@ async def _load(session: AsyncSession) -> IntegrationSetting:
     return item
 
 
+async def _resolve_attachments(session: AsyncSession, raw) -> list[dict]:
+    """Описания медиа со шлюза: URL остаются, file_id скачиваем в uploads."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            raw = []
+    if not isinstance(raw, list):
+        return []
+
+    out: list[dict] = []
+    token: str | None = None
+    for item in raw:
+        if isinstance(item, str):
+            item = {"url": item}
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if url:
+            out.append(
+                {
+                    "url": url,
+                    **({"name": item["name"]} if item.get("name") else {}),
+                    **(
+                        {"content_type": item["content_type"]}
+                        if item.get("content_type")
+                        else {}
+                    ),
+                }
+            )
+            continue
+        file_id = str(item.get("file_id") or "").strip()
+        if not file_id:
+            continue
+        if token is None:
+            from app.tasks.webhooks import _telegram_token
+
+            token = await _telegram_token(session)
+        if not token:
+            continue
+        from app.services.tg_media import save_tg_file
+
+        saved = await save_tg_file(token, file_id, name=item.get("name"))
+        if saved:
+            out.append(saved)
+    return out
+
+
 async def _ingest_event(session: AsyncSession, event: dict) -> None:
     from app.tasks.webhooks import _ingest
 
     source = str(event.get("source") or "")
     text = str(event.get("text") or "").strip()
-    if not text:
+    attachments = await _resolve_attachments(
+        session, event.get("media") or event.get("attachments")
+    )
+    if not text and not attachments:
         return
+    if not text:
+        text = "Вложение"
     if source not in ("avito", "telegram"):
         logger.info("Шлюз: источник «%s» пока не поддержан, событие пропущено", source)
         return
@@ -74,6 +128,7 @@ async def _ingest_event(session: AsyncSession, event: dict) -> None:
         name=event.get("sender_name"),
         msg_id=str(event.get("external_id") or "") or None,
         external_id=chat_id or None,
+        attachments=attachments,
         meta={
             "chat_id": chat_id,
             "gateway_event_id": event.get("id"),

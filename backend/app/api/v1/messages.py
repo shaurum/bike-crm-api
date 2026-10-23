@@ -1,13 +1,17 @@
 """Раздел «Сообщения»: список диалогов, история, отправка."""
 
+import mimetypes
+import os
+import uuid
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models import (
     ContactPoint,
@@ -19,6 +23,7 @@ from app.models import (
     User,
 )
 from app.schemas.messaging import (
+    AttachmentItem,
     ContactPointCreate,
     ContactPointResponse,
     ContactPointUpdate,
@@ -41,6 +46,57 @@ ACTIVE_STATUSES = (
 
 # Каналы, которые можно реально отправить, и как называется интеграция
 SENDABLE_CHANNELS = {"email", "telegram", "vk", "avito"}
+
+# Форматы, которые можно прикрепить к сообщению
+ALLOWED_UPLOAD_EXTS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".csv",
+    ".txt",
+    ".zip",
+    ".heic",
+    ".mp3",
+    ".ogg",
+    ".m4a",
+    ".mp4",
+}
+
+
+def _attachment_item(raw) -> Optional[AttachmentItem]:
+    """Нормализует запись вложения из БД (строка или dict)."""
+    if isinstance(raw, str):
+        return AttachmentItem(url=raw) if raw else None
+    if isinstance(raw, dict):
+        url = str(raw.get("url") or "")
+        if not url:
+            return None
+        return AttachmentItem(
+            url=url,
+            name=raw.get("name"),
+            content_type=raw.get("content_type"),
+        )
+    return None
+
+
+def _preview(msg: Optional[LeadMessage]) -> Optional[str]:
+    if not msg:
+        return None
+    text = (msg.content or "").strip()
+    if text:
+        return text[:140]
+    if msg.attachments:
+        return "📎 Вложение"
+    return None
 
 
 def _deal_state(lead: Optional[Lead]) -> str:
@@ -127,7 +183,7 @@ async def list_conversations(
                 customer_name=name,
                 lead_id=conv.lead_id,
                 deal_state=state,
-                preview=(last.content[:140] if last else None),
+                preview=_preview(last),
                 channel=(last.channel if last else None),
                 awaiting_reply=bool(last and last.direction == "inbound"),
                 contacts=contacts,
@@ -206,6 +262,11 @@ async def get_conversation(
             else None,
             author_name=authors.get(m.author_id) if m.author_id else None,
             subject=(m.meta or {}).get("subject"),
+            attachments=[
+                item
+                for item in (_attachment_item(a) for a in (m.attachments or []))
+                if item
+            ],
             created_at=m.created_at,
         )
         for m in messages
@@ -328,7 +389,14 @@ async def send_message(
             detail=f"У клиента нет контакта в канале «{channel}»",
         )
 
-    note = await _deliver(db, channel, recipient, payload.content, current_user, conv)
+    if not payload.content.strip() and not payload.attachments:
+        raise HTTPException(status_code=400, detail="Сообщение не может быть пустым")
+
+    attachments = [{"url": a} for a in payload.attachments]
+
+    note = await _deliver(
+        db, channel, recipient, payload.content, current_user, conv, attachments=attachments
+    )
 
     message = LeadMessage(
         lead_id=conv.lead_id,
@@ -336,6 +404,7 @@ async def send_message(
         channel=channel,
         direction="outbound",
         content=payload.content,
+        attachments=attachments,
         author_id=current_user.id,
         meta={"recipient": recipient.value, "delivered": note is None},
         is_read=True,
@@ -360,10 +429,57 @@ async def send_message(
             is_read=message.is_read,
             delivered=note is None,
             author_name=current_user.full_name,
+            attachments=[
+                item
+                for item in (_attachment_item(a) for a in (message.attachments or []))
+                if item
+            ],
             created_at=message.created_at,
         ),
         note=note,
     )
+
+
+@router.post("/{conversation_id}/attachments")
+async def upload_attachment(
+    conversation_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка вложения для сообщения: файл кладётся в uploads/messages/."""
+    await _load_conversation(db, conversation_id)
+
+    original = os.path.basename(file.filename or "").strip() or "файл"
+    ext = os.path.splitext(original)[1].lower()
+    if ext not in ALLOWED_UPLOAD_EXTS:
+        guess = mimetypes.guess_extension((file.content_type or "").split(";")[0].strip())
+        ext = guess if guess and guess.lower() in ALLOWED_UPLOAD_EXTS else ""
+    if not ext:
+        raise HTTPException(
+            status_code=415,
+            detail="Этот формат файла нельзя прикрепить (изображения, PDF, документы, архивы, аудио/видео)",
+        )
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if len(payload) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Файл больше {settings.MAX_UPLOAD_MB} МБ")
+
+    target_dir = os.path.join(settings.UPLOAD_DIR, "messages")
+    os.makedirs(target_dir, exist_ok=True)
+    filename = f"att-{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(target_dir, filename), "wb") as fh:
+        fh.write(payload)
+
+    return {
+        "url": f"/uploads/messages/{filename}",
+        "name": original,
+        "content_type": file.content_type,
+        "size": len(payload),
+    }
 
 
 async def _deliver(
@@ -373,13 +489,21 @@ async def _deliver(
     content: str,
     current_user: User,
     conv: Conversation,
+    attachments: Optional[List[dict]] = None,
 ) -> Optional[str]:
     """Пытаемся отправить. Возвращает текст замечания, если не получилось."""
+    attachments = attachments or []
+    urls = [str(a.get("url") or "") for a in attachments if a.get("url")]
+
     if channel == "email":
         from app.services.mail import MailError, send_email
 
+        # Почта не умеет наше вложение напрямую — отдаём ссылками
+        body = content
+        if urls:
+            body = (body + "\n\nВложения:\n" + "\n".join(urls)).strip()
         try:
-            await send_email(db, recipient.value, "Ответ из CRM", content)
+            await send_email(db, recipient.value, "Ответ из CRM", body)
             return None
         except MailError as exc:
             logger_warning(str(exc))
@@ -420,8 +544,12 @@ async def _deliver(
                 )
             if recipient.external_id != address:
                 recipient.external_id = address
+            # Текст обязателен для очереди шлюза: при одном вложении шлём ссылки
+            out_text = content.strip() or "\n".join(urls) or "Вложение"
             try:
-                await gateway.enqueue_outbound(address, content, source="telegram")
+                await gateway.enqueue_outbound(
+                    address, out_text, source="telegram", media=urls or None
+                )
                 return None
             except gateway.GatewayError as exc:
                 return f"Шлюз не принял сообщение: {exc}"
@@ -442,7 +570,10 @@ async def _deliver(
         if address and not address.lstrip("-").isdigit():
             address = "@" + address.lstrip("@")
         try:
-            await _send_telegram(token, address, content)
+            if content.strip():
+                await _send_telegram(token, address, content)
+            if attachments:
+                await _send_telegram_files(token, address, attachments)
             return None
         except Exception as exc:  # noqa: BLE001
             logger_warning(str(exc))
@@ -469,9 +600,17 @@ async def _deliver(
                 "дождитесь входящего сообщения в этом чате, чтобы ответить"
             )
 
+        # В Авито вложения уходят ссылками в тексте
+        out_text = content
+        if urls:
+            out_text = (content + ("\n\n" if content.strip() else "") + "\n".join(urls)).strip()
+        out_text = out_text or "Вложение"
+
         if gateway.is_configured():
             try:
-                await gateway.enqueue_outbound(str(recipient.external_id), content)
+                await gateway.enqueue_outbound(
+                    str(recipient.external_id), out_text, media=urls or None
+                )
                 return None
             except gateway.GatewayError as exc:
                 return f"Шлюз не принял сообщение: {exc}"
@@ -486,7 +625,7 @@ async def _deliver(
         try:
             item = await load_integration(db)
             user_id = account_user_id(item)
-            await send_text(db, user_id, str(recipient.external_id), content)
+            await send_text(db, user_id, str(recipient.external_id), out_text)
             return None
         except AvitoError as exc:
             logger_warning(str(exc))
@@ -523,6 +662,57 @@ async def _send_telegram(token: str, chat_id: str, text: str) -> None:
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(url, json={"chat_id": chat_id, "text": text})
         response.raise_for_status()
+
+
+def _resolve_upload(url: str) -> Optional[str]:
+    """Путь к файлу в uploads/ внутри контейнера (защита от ../)."""
+    if not url.startswith("/uploads/"):
+        return None
+    root = os.path.abspath(settings.UPLOAD_DIR)
+    target = os.path.abspath(os.path.join(root, url[len("/uploads/") :]))
+    if not target.startswith(root + os.sep):
+        return None
+    return target if os.path.isfile(target) else None
+
+
+async def _send_telegram_files(token: str, chat_id: str, attachments: List[dict]) -> None:
+    """Отправка вложений в Telegram: sendPhoto/sendDocument."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for item in attachments:
+            url = str(item.get("url") or "")
+            if not url:
+                continue
+            name = str(item.get("name") or os.path.basename(url) or "файл")
+            content_type = (
+                item.get("content_type")
+                or mimetypes.guess_type(name)[0]
+                or "application/octet-stream"
+            )
+            is_image = str(content_type).startswith("image/")
+            method = "sendPhoto" if is_image else "sendDocument"
+            media_key = "photo" if is_image else "document"
+
+            if url.startswith(("http://", "https://")):
+                response = await client.post(
+                    f"https://api.telegram.org/bot{token}/{method}",
+                    json={"chat_id": chat_id, media_key: url},
+                )
+                response.raise_for_status()
+                continue
+
+            local = _resolve_upload(url)
+            if not local:
+                continue
+            with open(local, "rb") as fh:
+                data = fh.read()
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/{method}",
+                data={"chat_id": chat_id},
+                files={media_key: (name, data, str(content_type))},
+            )
+            response.raise_for_status()
 
 
 @router.post("/{conversation_id}/close")

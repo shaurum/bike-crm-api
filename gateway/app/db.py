@@ -58,6 +58,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "username" not in columns:
         conn.execute("ALTER TABLE event ADD COLUMN username TEXT")
         conn.commit()
+    if "media" not in columns:
+        # JSON-список вложений: [{"url": ...}] или [{"file_id": ...}] (Telegram)
+        conn.execute("ALTER TABLE event ADD COLUMN media TEXT")
+        conn.commit()
 
 
 def _now() -> str:
@@ -75,6 +79,7 @@ def add_inbound(
     sender_name: Optional[str] = None,
     username: Optional[str] = None,
     occurred_at: Optional[str] = None,
+    media: Optional[str] = None,
 ) -> Optional[int]:
     """Кладём входящее событие. None — уже было, дубль."""
     try:
@@ -82,8 +87,8 @@ def add_inbound(
             """
             INSERT INTO event (
                 source, direction, external_id, chat_id, sender, sender_name,
-                username, text, occurred_at, status, updated_at
-            ) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                username, text, media, occurred_at, status, updated_at
+            ) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source,
@@ -93,6 +98,7 @@ def add_inbound(
                 sender_name,
                 username,
                 text,
+                media,
                 occurred_at or _now(),
                 INBOUND_PENDING,
                 _now(),
@@ -136,7 +142,7 @@ def resolve_chat(
 def pull_inbound(conn: sqlite3.Connection, after_id: int, limit: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT id, source, chat_id, sender, sender_name, username, text, occurred_at
+        SELECT id, source, chat_id, sender, sender_name, username, text, media, occurred_at
         FROM event
         WHERE direction = 'inbound' AND id > ?
         ORDER BY id
@@ -148,15 +154,20 @@ def pull_inbound(conn: sqlite3.Connection, after_id: int, limit: int) -> list[di
 
 
 def enqueue_outbound(
-    conn: sqlite3.Connection, *, source: str, chat_id: str, text: str
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    chat_id: str,
+    text: str,
+    media: Optional[str] = None,
 ) -> int:
     cursor = conn.execute(
         """
         INSERT INTO event (
-            source, direction, chat_id, text, occurred_at, status, updated_at
-        ) VALUES (?, 'outbound', ?, ?, ?, ?, ?)
+            source, direction, chat_id, text, media, occurred_at, status, updated_at
+        ) VALUES (?, 'outbound', ?, ?, ?, ?, ?, ?)
         """,
-        (source, chat_id, text, _now(), OUTBOUND_PENDING, _now()),
+        (source, chat_id, text, media, _now(), OUTBOUND_PENDING, _now()),
     )
     conn.commit()
     return int(cursor.lastrowid)
@@ -165,7 +176,7 @@ def enqueue_outbound(
 def next_outbound(conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT id, source, chat_id, text, attempts
+        SELECT id, source, chat_id, text, media, attempts
         FROM event
         WHERE direction = 'outbound' AND status = ?
         ORDER BY id

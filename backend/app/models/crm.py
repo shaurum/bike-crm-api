@@ -218,6 +218,13 @@ class LeadMessage(UUIDMixin, TimestampMixin, Base):
         String(20), nullable=False, comment="inbound / outbound"
     )
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="Message text")
+    attachments: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'"),
+        default=list,
+        comment="Вложения: [{url, name, content_type}]",
+    )
     external_msg_id: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True, comment="Message id in external system"
     )

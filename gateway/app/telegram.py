@@ -98,10 +98,30 @@ async def get_updates(offset: int, timeout: int = 50) -> list[dict[str, Any]]:
 
 
 async def send_message(chat_id: str, text: str) -> str:
+    target = _target_chat(chat_id)
+    result = await call("sendMessage", chat_id=target, text=text[:4096])
+    if isinstance(result, dict) and result.get("message_id") is not None:
+        return str(result["message_id"])
+    return ""
+
+
+def _target_chat(chat_id: str) -> str:
     target = (chat_id or "").strip()
     if target and not target.lstrip("-").isdigit() and not target.startswith("@"):
         target = f"@{target}"
-    result = await call("sendMessage", chat_id=target, text=text[:4096])
+    return target
+
+
+_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+
+async def send_media(chat_id: str, url: str) -> str:
+    """Отправка картинки/документа по URL (Telegram скачает файл сам)."""
+    clean = url.split("?")[0].lower()
+    is_image = clean.endswith(_IMAGE_EXTS)
+    method = "sendPhoto" if is_image else "sendDocument"
+    key = "photo" if is_image else "document"
+    result = await call(method, chat_id=_target_chat(chat_id), **{key: url})
     if isinstance(result, dict) and result.get("message_id") is not None:
         return str(result["message_id"])
     return ""
@@ -127,6 +147,24 @@ def message_text(message: dict[str, Any]) -> str:
     elif message.get("contact"):
         kind = "контакт"
     return f"[{kind}]" if kind else ""
+
+
+def message_media(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """Файлы сообщения: file_id отдаём CRM, она скачает файл себе в uploads."""
+    items: list[dict[str, Any]] = []
+    photo = message.get("photo")
+    if isinstance(photo, list) and photo:
+        best = photo[-1]  # самое крупное разрешение
+        if isinstance(best, dict) and best.get("file_id"):
+            items.append({"kind": "photo", "file_id": best["file_id"]})
+    for kind in ("document", "video", "audio", "voice", "animation"):
+        item = message.get(kind)
+        if isinstance(item, dict) and item.get("file_id"):
+            entry: dict[str, Any] = {"kind": kind, "file_id": item["file_id"]}
+            if item.get("file_name"):
+                entry["name"] = item["file_name"]
+            items.append(entry)
+    return items[:5]
 
 
 def sender_name(message: dict[str, Any]) -> Optional[str]:

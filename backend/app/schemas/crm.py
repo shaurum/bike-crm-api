@@ -181,6 +181,8 @@ class TaskBase(BaseModel):
     related_bike_id: Optional[UUID] = None
     assignee_id: Optional[UUID] = None
 
+
+class TaskCreate(TaskBase):
     @field_validator("title")
     @classmethod
     def _strip_title(cls, v: str) -> str:
@@ -188,10 +190,6 @@ class TaskBase(BaseModel):
         if not v:
             raise ValueError("Название задачи обязательно")
         return v
-
-
-class TaskCreate(TaskBase):
-    pass
 
 
 class TaskUpdate(BaseModel):

@@ -60,6 +60,14 @@ class ConversationListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AttachmentItem(BaseModel):
+    """Вложение сообщения: файл в uploads/ или внешняя ссылка."""
+
+    url: str
+    name: Optional[str] = None
+    content_type: Optional[str] = None
+
+
 class MessageResponse(BaseModel):
     id: UUID
     channel: str
@@ -70,6 +78,7 @@ class MessageResponse(BaseModel):
     delivered: Optional[bool] = None
     author_name: Optional[str] = None
     subject: Optional[str] = None
+    attachments: List[AttachmentItem] = Field(default_factory=list)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -102,12 +111,22 @@ class MessageCreate(BaseModel):
     contact_id: Optional[UUID] = Field(
         None, description="Куда отправлять; пусто = основной контакт канала"
     )
+    attachments: List[str] = Field(
+        default_factory=list,
+        description="URL вложений из /uploads (после загрузки через /attachments)",
+    )
 
     @field_validator("content")
     @classmethod
     def _content_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("Сообщение не может быть пустым")
+        return v or ""
+
+    @field_validator("attachments")
+    @classmethod
+    def _attachments_local(cls, v: list) -> list:
+        for url in v:
+            if not isinstance(url, str) or not url.startswith("/uploads/"):
+                raise ValueError("Вложение должно быть файлом из uploads")
         return v
 
 

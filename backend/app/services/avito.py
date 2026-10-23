@@ -347,6 +347,45 @@ def message_text(message: dict[str, Any]) -> str:
     return f"[{kind}]"
 
 
+def message_attachments(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """Вложения из сообщения Авито: картинка или файл из content."""
+    content = message.get("content") or {}
+    if not isinstance(content, dict):
+        return []
+    out: list[dict[str, Any]] = []
+
+    def _url_of(value: Any) -> Optional[str]:
+        if isinstance(value, str) and value.startswith(("http://", "https://")):
+            return value
+        if isinstance(value, dict):
+            for key in ("url", "original", "large", "small", "thumb"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                    return candidate
+        return None
+
+    image_url = _url_of(content.get("image"))
+    if image_url:
+        out.append({"url": image_url, "content_type": "image/jpeg"})
+
+    file_value = content.get("file")
+    file_url = _url_of(file_value)
+    if file_url:
+        name = None
+        content_type = None
+        if isinstance(file_value, dict):
+            name = file_value.get("name") or file_value.get("file_name")
+            content_type = file_value.get("content_type") or file_value.get("type")
+        out.append({"url": file_url, "name": name, "content_type": content_type})
+
+    url = content.get("url")
+    if not out and message.get("type") in ("image", "file", "photo", "document"):
+        external = _url_of(url)
+        if external:
+            out.append({"url": external, "content_type": message.get("type")})
+    return out
+
+
 def _counterparty_users(chat: dict[str, Any], own_user_id: Any) -> list[dict[str, Any]]:
     users = chat.get("users") or []
     return [

@@ -275,6 +275,42 @@ def message_text(message: dict[str, Any]) -> str:
     return f"[{message.get('type') or 'сообщение'}]"
 
 
+def message_media(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """Вложения сообщения Авито: URL картинки или файла из content."""
+    content = message.get("content") or {}
+    if not isinstance(content, dict):
+        return []
+    out: list[dict[str, Any]] = []
+
+    def _url_of(value: Any) -> Optional[str]:
+        if isinstance(value, str) and value.startswith(("http://", "https://")):
+            return value
+        if isinstance(value, dict):
+            for key in ("url", "original", "large", "small", "thumb"):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                    return candidate
+        return None
+
+    image_url = _url_of(content.get("image"))
+    if image_url:
+        out.append({"url": image_url, "content_type": "image/jpeg"})
+
+    file_value = content.get("file")
+    file_url = _url_of(file_value)
+    if file_url:
+        entry: dict[str, Any] = {"url": file_url}
+        if isinstance(file_value, dict):
+            if file_value.get("name") or file_value.get("file_name"):
+                entry["name"] = file_value.get("name") or file_value.get("file_name")
+            if file_value.get("content_type") or file_value.get("type"):
+                entry["content_type"] = (
+                    file_value.get("content_type") or file_value.get("type")
+                )
+        out.append(entry)
+    return out[:5]
+
+
 def counterparty_id(chat: dict[str, Any], own_user_id: Any) -> Optional[str]:
     for user in chat.get("users") or []:
         if not isinstance(user, dict):

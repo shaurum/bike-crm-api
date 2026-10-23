@@ -90,12 +90,16 @@ async def resolve_telegram(username: str) -> Optional[str]:
     return None
 
 
-async def enqueue_outbound(chat_id: str, text: str, source: str = "avito") -> dict[str, Any]:
-    return await _request(
-        "POST",
-        "/outbox",
-        json_body={"items": [{"source": source, "chat_id": chat_id, "text": text}]},
-    )
+async def enqueue_outbound(
+    chat_id: str,
+    text: str,
+    source: str = "avito",
+    media: Optional[list] = None,
+) -> dict[str, Any]:
+    item: dict[str, Any] = {"source": source, "chat_id": chat_id, "text": text}
+    if media:
+        item["media"] = list(media)
+    return await _request("POST", "/outbox", json_body={"items": [item]})
 
 
 async def avito_config(patch: dict[str, Any]) -> dict[str, Any]:

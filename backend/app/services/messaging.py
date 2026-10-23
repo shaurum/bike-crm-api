@@ -186,6 +186,7 @@ async def ingest_inbound(
     phone: Optional[str] = None,
     email: Optional[str] = None,
     meta: Optional[dict] = None,
+    attachments: Optional[list] = None,
 ) -> IngestResult:
     """Принимает входящее сообщение и кладёт его в правильный чат."""
     value = normalize_value(channel, sender_value)
@@ -288,6 +289,7 @@ async def ingest_inbound(
         channel=channel,
         direction="inbound",
         content=content,
+        attachments=attachments or [],
         external_msg_id=external_msg_id,
         meta=meta or {},
         is_read=False,

@@ -21,6 +21,8 @@ from app.models.crm import (
 from app.models.conversation import ContactPoint, Conversation
 from app.models.integration import IntegrationSetting
 from app.models.invite import Invite
+from app.models.kb import KBArticle
+from app.models.canned import CannedReply
 from app.models.rental import (
     Branch,
     Bike,
@@ -60,6 +62,8 @@ __all__ = [
 "CompanyProfile",
     "IntegrationSetting",
     "Invite",
+    "KBArticle",
+    "CannedReply",
     "ContactPoint",
     "Conversation",
     "Branch",

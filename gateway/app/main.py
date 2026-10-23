@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -106,10 +107,34 @@ class OutboxItem(BaseModel):
     source: str = Field("avito")
     chat_id: str
     text: str = Field(..., min_length=1, max_length=4000)
+    media: Optional[list[str]] = Field(
+        default=None, description="URL вложений (ссылки на файлы CRM)"
+    )
 
 
 class OutboxBatch(BaseModel):
     items: list[OutboxItem]
+
+
+def _parse_media(raw: Any) -> list[str]:
+    """media из очереди (JSON-строка) → список URL-строк."""
+    if not raw:
+        return []
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(data, list):
+        return []
+    out: list[str] = []
+    for item in data:
+        if isinstance(item, str) and item:
+            out.append(item)
+        elif isinstance(item, dict) and item.get("url"):
+            out.append(str(item["url"]))
+    return out
 
 
 class AvitoConfigPatch(BaseModel):
@@ -174,17 +199,22 @@ async def poll_avito() -> None:
                 continue
             external_id = str(message.get("id") or "")
             text = avito.message_text(message)
-            if not external_id or not text:
+            media_items = avito.message_media(message)
+            media = (
+                json.dumps(media_items, ensure_ascii=False) if media_items else None
+            )
+            if not external_id or (not text and not media):
                 continue
             db.add_inbound(
                 connection,
                 source="avito",
                 external_id=external_id,
                 chat_id=chat_id,
-                text=text,
+                text=text or "Вложение",
                 sender=sender,
                 sender_name=name,
                 occurred_at=_iso_from_unix(message.get("created")),
+                media=media,
             )
             highest = max(highest, int(message.get("created") or 0))
 
@@ -237,7 +267,13 @@ async def deliver_outbox() -> None:
         return
 
     try:
-        await avito.send_text(str(user_id), str(row["chat_id"]), str(row["text"]))
+        media = _parse_media(row["media"])
+        text = str(row["text"])
+        # В Авито нет медиа-API: ссылки на вложения кладём в текст сообщения
+        relative = [u for u in media if not u.startswith(("http://", "https://"))]
+        if relative:
+            text = (text + "\n" + "\n".join(relative)).strip()
+        await avito.send_text(str(user_id), str(row["chat_id"]), text)
     except avito.AvitoError as exc:
         retryable = exc.status_code is None or exc.status_code >= 500
         logger.warning("Avito: не отправлено (id=%s): %s", row["id"], exc)
@@ -266,7 +302,17 @@ async def deliver_telegram(row: Any) -> None:
         )
         return
     try:
-        await telegram.send_message(str(row["chat_id"]), str(row["text"]))
+        media = _parse_media(row["media"])
+        text = str(row["text"])
+        # Абсолютные URL уходят как фото/документ, остальное добавляем в текст
+        remote = [u for u in media if u.startswith(("http://", "https://"))]
+        relative = [u for u in media if not u.startswith(("http://", "https://"))]
+        if relative:
+            text = (text + "\n" + "\n".join(relative)).strip()
+        if text.strip():
+            await telegram.send_message(str(row["chat_id"]), text)
+        for url in remote:
+            await telegram.send_media(str(row["chat_id"]), url)
     except telegram.TelegramError as exc:
         retryable = exc.status_code is None or exc.status_code == 429 or exc.status_code >= 500
         logger.warning("Telegram: не отправлено (id=%s): %s", row["id"], exc)
@@ -295,7 +341,11 @@ async def poll_telegram() -> None:
         chat_id = str(chat.get("id") or "")
         message_id = message.get("message_id")
         text = telegram.message_text(message)
-        if not chat_id or not message_id or user.get("is_bot") or not text:
+        media_items = telegram.message_media(message)
+        media = (
+            json.dumps(media_items, ensure_ascii=False) if media_items else None
+        )
+        if not chat_id or not message_id or user.get("is_bot") or (not text and not media):
             continue
         try:
             db.add_inbound(
@@ -303,11 +353,12 @@ async def poll_telegram() -> None:
                 source="telegram",
                 external_id=f"{chat_id}:{message_id}",
                 chat_id=chat_id,
-                text=text,
+                text=text or "Вложение",
                 sender=str(user.get("id") or chat_id),
                 sender_name=telegram.sender_name(message),
                 username=user.get("username") or None,
                 occurred_at=telegram.iso_from_unix(message.get("date")),
+                media=media,
             )
         except Exception:  # noqa: BLE001
             logger.exception("Telegram: не разобрали update_id=%s", update.get("update_id"))
@@ -536,6 +587,9 @@ async def outbox(payload: OutboxBatch) -> dict[str, Any]:
             source=item.source,
             chat_id=item.chat_id,
             text=item.text,
+            media=(
+                json.dumps(item.media, ensure_ascii=False) if item.media else None
+            ),
         )
         for item in payload.items
     ]

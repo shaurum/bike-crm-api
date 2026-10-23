@@ -60,11 +60,19 @@ async def _process_avito_webhook(source_id: str, payload: dict):
                 msg_id = str(msg.get("id", ""))
                 if not msg_id:
                     continue
+                from app.services.avito import message_attachments
+
+                attachments = message_attachments(msg)
+                content = str(msg.get("content", {}).get("text") or "").strip()
+                if not content and attachments:
+                    content = f"[{msg.get('type') or 'вложение'}]"
+                if not content and not attachments:
+                    continue
                 await _ingest(
                     session,
                     channel="avito",
                     sender=sender,
-                    content=msg.get("content", {}).get("text", ""),
+                    content=content,
                     name=name,
                     phone=user.get("phone"),
                     email=user.get("email"),
@@ -72,6 +80,7 @@ async def _process_avito_webhook(source_id: str, payload: dict):
                     external_id=str(chat.get("id", "")) or None,
                     meta={"author": msg.get("author", {}), "source_id": source_id},
                     subject=None,
+                    attachments=attachments,
                 )
             if lead:
                 lead.raw_payload = payload
@@ -124,16 +133,45 @@ def process_telegram_webhook(self, source_id: str, payload: dict):
     asyncio.run(_process_telegram_webhook(source_id, payload))
 
 
+async def _telegram_token(session: AsyncSession) -> Optional[str]:
+    """Токен бота: интеграция в БД, иначе настройка из окружения."""
+    from app.models import IntegrationSetting
+
+    result = await session.execute(
+        select(IntegrationSetting).where(IntegrationSetting.name == "telegram")
+    )
+    item = result.scalars().first()
+    if item and item.is_enabled and (item.secret or {}).get("bot_token"):
+        return str(item.secret["bot_token"])
+    return settings.TELEGRAM_BOT_TOKEN
+
+
 async def _process_telegram_webhook(source_id: str, payload: dict):
     async with async_session_maker() as session:
         try:
             message = payload.get("message", {})
             chat = message.get("chat", {})
             chat_id = str(chat.get("id", ""))
-            text = message.get("text", "")
+            text = message.get("text") or message.get("caption") or ""
             from_user = message.get("from", {})
-            if not chat_id or not text:
+            if not chat_id:
                 return
+
+            # Картинки и документы: скачиваем файлы, иначе сообщение бы потерялось
+            attachments: list[dict] = []
+            token = await _telegram_token(session)
+            if token and any(
+                message.get(kind)
+                for kind in ("photo", "document", "video", "audio", "voice", "animation", "sticker")
+            ):
+                from app.services.tg_media import extract_attachments
+
+                attachments = await extract_attachments(token, message)
+
+            if not text and not attachments:
+                return
+            if not text:
+                text = "Вложение"
 
             name = (
                 f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip()
@@ -152,6 +190,7 @@ async def _process_telegram_webhook(source_id: str, payload: dict):
                 msg_id=str(message.get("message_id", "")),
                 meta={"from": from_user, "chat": chat, "source_id": source_id},
                 subject=None,
+                attachments=attachments,
             )
             await session.commit()
         except Exception as e:
@@ -309,6 +348,7 @@ async def _ingest(
     external_id: str | None = None,
     meta: dict | None = None,
     subject: str | None = None,
+    attachments: list | None = None,
 ):
     """Единая точка входа для всех каналов.
 
@@ -327,6 +367,7 @@ async def _ingest(
             phone=phone,
             email=email,
             meta=meta,
+            attachments=attachments,
         )
     except DuplicateMessage as exc:
         logger.info("Duplicate %s message skipped: %s", channel, exc.external_msg_id)
@@ -468,18 +509,24 @@ async def _poll_avito_messages():
                     continue
                 msg_id = str(msg.get("id") or "")
                 text = message_text(msg)
-                if not msg_id or not text:
+                if not msg_id:
+                    continue
+                from app.services.avito import message_attachments
+
+                attachments = message_attachments(msg)
+                if not text and not attachments:
                     continue
                 try:
                     await _ingest(
                         session,
                         channel="avito",
                         sender=sender,
-                        content=text,
+                        content=text or "Вложение",
                         name=name,
                         msg_id=msg_id,
                         external_id=chat_id,
                         meta={"chat_id": chat_id, "author_id": msg.get("author_id")},
+                        attachments=attachments,
                     )
                     await session.commit()
                 except Exception as exc:  # noqa: BLE001
