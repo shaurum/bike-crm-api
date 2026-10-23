@@ -7,10 +7,9 @@ import HowItWorks from '../components/HowItWorks.astro';
 import Contacts from '../components/Contacts.astro';
 import MobileCta from '../components/MobileCta.astro';
 import { site } from '../config/site';
-import bikesJson from '../data/bikes.json' with { type: 'json' };
+import bikesData from '../../public/bikes.json';
 
-const bikesData = bikesJson;
-const bikes = bikesData.bikes || [];
+const bikes = (bikesData as any).bikes || [];
 ---
 <Layout title={`${site.name} — Аренда электробайков | ВЖУХ — и поехали!`}>
   <Header />
