@@ -1,6 +1,7 @@
 ---
 import { site } from '../config/site';
 const base = import.meta.env.BASE_URL;
+const baseUrl = base.endsWith('/') ? base : base + '/';
 ---
 <section class="hero">
   <div class="hero__bg"></div>
@@ -19,8 +20,8 @@ const base = import.meta.env.BASE_URL;
           <span class="hero__stat-label">за сутки</span>
         </div>
         <div>
-          <span class="hero__stat-num">48–60</span>
-          <span class="hero__stat-label">Ач батарея</span>
+          <span class="hero__stat-num">48–60 Ач</span>
+          <span class="hero__stat-label">батарея</span>
         </div>
         <div>
           <span class="hero__stat-num">до 95 км</span>
@@ -30,7 +31,7 @@ const base = import.meta.env.BASE_URL;
     </div>
     <div class="hero__visual">
       <div class="hero__logo-card">
-        <img src={`${base}logo.webp`} alt={site.name} />
+        <img src={`${baseUrl}logo.webp`} alt={site.name} />
       </div>
       <div class="hero__stripe"></div>
     </div>
