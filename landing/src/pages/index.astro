@@ -7,10 +7,9 @@ import HowItWorks from '../components/HowItWorks.astro';
 import Contacts from '../components/Contacts.astro';
 import MobileCta from '../components/MobileCta.astro';
 import { site } from '../config/site';
-import bikesData from '../data/bikes.json';
-
-const bikes = bikesData.bikes || [];
-const data = bikesData;
+const bikesData = await import('../data/bikes.json');
+const bikes = bikesData.default?.bikes || bikesData.bikes || [];
+const data = bikesData.default || bikesData;
 ---
 <Layout title={`${site.name} — Аренда электробайков | ВЖУХ — и поехали!`}>
   <Header />
@@ -24,12 +23,12 @@ const data = bikesData;
           <p>Цены указаны за неделю, 2 недели и месяц. При аренде от недели — от {bikes[0]?.per_day || 930} ₽/сутки.</p>
         </div>
         <div class="bikes-grid">
-          {bikes.map((bike) => (
+          {bikes.map((bike: any) => (
             <BikeCard bike={bike} />
           ))}
         </div>
         <div class="bikes-note">
-          <p>Данные обновляются автоматически. Актуальность: {new Date(data.updated_at).toLocaleString('ru-RU')}</p>
+          <p>Данные обновляются автоматически. Актуальность: {data.updated_at ? new Date(data.updated_at).toLocaleString('ru-RU') : ''}</p>
         </div>
       </div>
     </section>
@@ -38,7 +37,7 @@ const data = bikesData;
   </main>
   <footer class="footer">
     <div class="container footer__inner">
-      <img src={import.meta.env.BASE_URL + 'logo.webp'} alt={site.name} class="footer__logo" onerror="this.src=this.src.replace('.webp','.png')" />
+      <img src={import.meta.env.BASE_URL + 'logo.webp'} alt={site.name} class="footer__logo" />
       <p>© {new Date().getFullYear()} {site.name}. Аренда электробайков.</p>
     </div>
   </footer>
@@ -47,50 +46,12 @@ const data = bikesData;
 </Layout>
 
 <style>
-  .section__header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    margin-bottom: clamp(2rem, 6vw, 3.6rem);
-  }
-  .section__eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    text-transform: uppercase;
-    letter-spacing: 0.28em;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-  .section__eyebrow::before {
-    content: '';
-    width: 12px;
-    height: 2px;
-    background: var(--yellow);
-  }
-  .bikes-grid {
-    display: grid;
-    gap: clamp(1.2rem, 4vw, 2rem);
-  }
-  .bikes-note {
-    margin-top: 1.6rem;
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-  }
-  .footer {
-    border-top: 1px solid var(--border);
-    padding: 2rem 0;
-  }
-  .footer__inner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.8rem;
-    text-align: center;
-  }
-  .footer__logo {
-    height: 38px;
-    width: auto;
-  }
+  .section__header { display: flex; flex-direction: column; gap: 0.8rem; margin-bottom: clamp(2rem, 6vw, 3.6rem); }
+  .section__eyebrow { display: inline-flex; align-items: center; gap: 0.4rem; text-transform: uppercase; letter-spacing: 0.28em; font-size: 0.8rem; font-weight: 600; }
+  .section__eyebrow::before { content: ''; width: 12px; height: 2px; background: var(--yellow); }
+  .bikes-grid { display: grid; gap: clamp(1.2rem, 4vw, 2rem); }
+  .bikes-note { margin-top: 1.6rem; text-align: center; color: var(--text-secondary); font-size: 0.9rem; }
+  .footer { border-top: 1px solid var(--border); padding: 2rem 0; }
+  .footer__inner { display: flex; flex-direction: column; align-items: center; gap: 0.8rem; text-align: center; }
+  .footer__logo { height: 38px; width: auto; }
 </style>
