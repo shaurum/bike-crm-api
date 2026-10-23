@@ -6,10 +6,11 @@ import BikeCard from '../components/BikeCard.astro';
 import HowItWorks from '../components/HowItWorks.astro';
 import Contacts from '../components/Contacts.astro';
 import MobileCta from '../components/MobileCta.astro';
-import data from '../data/bikes.json';
 import { site } from '../config/site';
+import bikesData from '../data/bikes.json';
 
-const bikes = data.bikes || [];
+const bikes = bikesData.bikes || [];
+const data = bikesData;
 ---
 <Layout title={`${site.name} — Аренда электробайков | ВЖУХ — и поехали!`}>
   <Header />
@@ -37,7 +38,7 @@ const bikes = data.bikes || [];
   </main>
   <footer class="footer">
     <div class="container footer__inner">
-      <img src={import.meta.env.BASE_URL + 'logo.webp'} alt={site.name} class="footer__logo" onerror={`this.src='${import.meta.env.BASE_URL}logo.png'`} />
+      <img src={import.meta.env.BASE_URL + 'logo.webp'} alt={site.name} class="footer__logo" onerror="this.src=this.src.replace('.webp','.png')" />
       <p>© {new Date().getFullYear()} {site.name}. Аренда электробайков.</p>
     </div>
   </footer>
