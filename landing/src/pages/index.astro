@@ -37,6 +37,7 @@ const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL :
     <div class="container footer__inner">
       <img src={`${base}logo.webp`} alt={site.name} class="footer__logo" />
       <p>© {new Date().getFullYear()} {site.name}. Аренда электробайков.</p>
+      <a class="footer__link" href="https://disk.yandex.ru/i/PfMgrumTQ7KYfA" target="_blank" rel="noopener">Публичная оферта</a>
     </div>
   </footer>
   <div class="footer-spacer"></div>
@@ -51,4 +52,13 @@ const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL :
   .footer { border-top: 1px solid var(--border); padding: 2rem 0; }
   .footer__inner { display: flex; flex-direction: column; align-items: center; gap: 0.8rem; text-align: center; }
   .footer__logo { height: 38px; width: auto; display: block; }
+  .footer__link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.95rem;
+  }
+  .footer__link:hover {
+    text-decoration: underline;
+  }
 </style>
+
