@@ -1,0 +1,63 @@
+{
+  "updated_at": "2026-10-23T19:00:00Z",
+  "source": "stub",
+  "bikes": [
+    {
+      "id": "stub-maikaline-u2",
+      "model": "Maikaline U2",
+      "slug": "maikaline-u2",
+      "color": "Чёрный",
+      "year": 2025,
+      "battery_capacity": 48,
+      "max_speed": 45,
+      "range_km": 80,
+      "photos": [],
+      "available_count": 3,
+      "prices": [
+        { "label": "Неделя", "amount": 6500 },
+        { "label": "2 недели", "amount": 12000 },
+        { "label": "Месяц", "amount": 20000 }
+      ],
+      "deposit": 0,
+      "per_day": 930
+    },
+    {
+      "id": "stub-city-racer",
+      "model": "CityRacer E5",
+      "slug": "cityracer-e5",
+      "color": "Матовый чёрный",
+      "year": 2025,
+      "battery_capacity": 52,
+      "max_speed": 45,
+      "range_km": 90,
+      "photos": [],
+      "available_count": 2,
+      "prices": [
+        { "label": "Неделя", "amount": 7000 },
+        { "label": "2 недели", "amount": 13000 },
+        { "label": "Месяц", "amount": 21500 }
+      ],
+      "deposit": 0,
+      "per_day": 1000
+    },
+    {
+      "id": "stub-urban-pro",
+      "model": "Urban Pro X",
+      "slug": "urban-pro-x",
+      "color": "Чёрный/Жёлтый",
+      "year": 2025,
+      "battery_capacity": 60,
+      "max_speed": 50,
+      "range_km": 95,
+      "photos": [],
+      "available_count": 1,
+      "prices": [
+        { "label": "Неделя", "amount": 7500 },
+        { "label": "2 недели", "amount": 14000 },
+        { "label": "Месяц", "amount": 23000 }
+      ],
+      "deposit": 0,
+      "per_day": 1071
+    }
+  ]
+}
