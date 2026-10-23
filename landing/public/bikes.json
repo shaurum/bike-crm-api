@@ -11,12 +11,23 @@
       "battery_capacity": 48,
       "max_speed": 45,
       "range_km": 80,
-      "photos": [],
+      "photos": [
+        "/bike-crm-api/bikes/bike1.webp"
+      ],
       "available_count": 3,
       "prices": [
-        { "label": "Неделя", "amount": 6500 },
-        { "label": "2 недели", "amount": 12000 },
-        { "label": "Месяц", "amount": 20000 }
+        {
+          "label": "Неделя",
+          "amount": 6500
+        },
+        {
+          "label": "2 недели",
+          "amount": 12000
+        },
+        {
+          "label": "Месяц",
+          "amount": 20000
+        }
       ],
       "deposit": 0,
       "per_day": 930
@@ -30,12 +41,23 @@
       "battery_capacity": 52,
       "max_speed": 45,
       "range_km": 90,
-      "photos": [],
+      "photos": [
+        "/bike-crm-api/bikes/bike2.webp"
+      ],
       "available_count": 2,
       "prices": [
-        { "label": "Неделя", "amount": 7000 },
-        { "label": "2 недели", "amount": 13000 },
-        { "label": "Месяц", "amount": 21500 }
+        {
+          "label": "Неделя",
+          "amount": 7000
+        },
+        {
+          "label": "2 недели",
+          "amount": 13000
+        },
+        {
+          "label": "Месяц",
+          "amount": 21500
+        }
       ],
       "deposit": 0,
       "per_day": 1000
@@ -49,12 +71,23 @@
       "battery_capacity": 60,
       "max_speed": 50,
       "range_km": 95,
-      "photos": [],
+      "photos": [
+        "/bike-crm-api/bikes/bike3.webp"
+      ],
       "available_count": 1,
       "prices": [
-        { "label": "Неделя", "amount": 7500 },
-        { "label": "2 недели", "amount": 14000 },
-        { "label": "Месяц", "amount": 23000 }
+        {
+          "label": "Неделя",
+          "amount": 7500
+        },
+        {
+          "label": "2 недели",
+          "amount": 14000
+        },
+        {
+          "label": "Месяц",
+          "amount": 23000
+        }
       ],
       "deposit": 0,
       "per_day": 1071

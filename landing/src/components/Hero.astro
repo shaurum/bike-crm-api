@@ -20,7 +20,7 @@ const base = import.meta.env.BASE_URL;
         </div>
         <div>
           <span class="hero__stat-num">48–60</span>
-          <span class="hero__stat-label">кВт·ч батарея</span>
+          <span class="hero__stat-label">Ач батарея</span>
         </div>
         <div>
           <span class="hero__stat-num">до 95 км</span>
@@ -30,7 +30,7 @@ const base = import.meta.env.BASE_URL;
     </div>
     <div class="hero__visual">
       <div class="hero__logo-card">
-        <img src={`${base}logo.webp`} alt={site.name} onerror={`this.src='${base}logo.png'`} />
+        <img src={`${base}logo.webp`} alt={site.name} />
       </div>
       <div class="hero__stripe"></div>
     </div>
@@ -133,6 +133,8 @@ const base = import.meta.env.BASE_URL;
   }
   .hero__logo-card img {
     width: min(420px, 80vw);
+    height: auto;
+    display: block;
   }
   .hero__stripe {
     position: absolute;
