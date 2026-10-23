@@ -1,0 +1,153 @@
+---
+import { site } from '../config/site';
+const base = import.meta.env.BASE_URL;
+---
+<section class="hero">
+  <div class="hero__bg"></div>
+  <div class="container hero__inner">
+    <div class="hero__content">
+      <span class="hero__eyebrow">Аренда электробайков</span>
+      <h1 class="hero__title">ВЖУХ — и поехали!</h1>
+      <p class="hero__text">Выбрал, сел, отправился. Быстро, просто и с хорошим настроением.</p>
+      <div class="hero__actions">
+        <a class="btn btn--yellow" href="#bikes">Выбрать байк</a>
+        <a class="btn btn--ghost" href={`tel:${site.phoneRaw}`}>Позвонить</a>
+      </div>
+      <div class="hero__stats">
+        <div>
+          <span class="hero__stat-num">от 930 ₽</span>
+          <span class="hero__stat-label">за сутки</span>
+        </div>
+        <div>
+          <span class="hero__stat-num">48–60</span>
+          <span class="hero__stat-label">кВт·ч батарея</span>
+        </div>
+        <div>
+          <span class="hero__stat-num">до 95 км</span>
+          <span class="hero__stat-label">запас хода</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero__visual">
+      <div class="hero__logo-card">
+        <img src={`${base}logo.webp`} alt={site.name} onerror={`this.src='${base}logo.png'`} />
+      </div>
+      <div class="hero__stripe"></div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(4rem, 10vw, 8rem) 0 clamp(3rem, 8vw, 6rem);
+  }
+  .hero__bg {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(245, 185, 27, 0.18), transparent 55%),
+                radial-gradient(circle at bottom left, rgba(17, 17, 17, 0.04), transparent 50%);
+    pointer-events: none;
+  }
+  .hero__inner {
+    position: relative;
+    display: grid;
+    gap: clamp(2rem, 6vw, 4rem);
+    align-items: center;
+  }
+  .hero__content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+  .hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.8rem;
+    color: var(--ink);
+  }
+  .hero__eyebrow::before {
+    content: '';
+    width: 12px;
+    height: 2px;
+    background: var(--yellow);
+  }
+  .hero__title {
+    text-transform: uppercase;
+  }
+  .hero__text {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    max-width: 520px;
+  }
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-top: 0.6rem;
+  }
+  .hero__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-top: clamp(1.5rem, 4vw, 2.5rem);
+  }
+  .hero__stats > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 1rem 1.2rem;
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid var(--border);
+    box-shadow: 0 40px 60px -60px rgba(17, 17, 17, 0.9);
+  }
+  .hero__stat-num {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 700;
+    font-size: 1.4rem;
+  }
+  .hero__stat-label {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+  .hero__visual {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .hero__logo-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(2rem, 6vw, 4rem);
+    border-radius: 32px;
+    background: linear-gradient(160deg, rgba(245, 185, 27, 0.25) 0%, rgba(255,255,255,1) 70%);
+    border: 1px solid rgba(245, 185, 27, 0.4);
+    box-shadow: 0 80px 120px -100px rgba(17, 17, 17, 0.8);
+  }
+  .hero__logo-card img {
+    width: min(420px, 80vw);
+  }
+  .hero__stripe {
+    position: absolute;
+    inset: auto -20% -30% -20%;
+    height: 40%;
+    background: radial-gradient(circle, rgba(245, 185, 27, 0.25), transparent 70%);
+    filter: blur(60px);
+    pointer-events: none;
+  }
+  @media (min-width: 960px) {
+    .hero__inner {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .hero__visual {
+      justify-content: flex-end;
+    }
+  }
+</style>

@@ -1,0 +1,83 @@
+<section class="section" id="how">
+  <div class="container">
+    <div class="section__header">
+      <span class="section__eyebrow">Как взять байк</span>
+      <h2>Три шага — и в путь</h2>
+      <p>Быстро, без лишних формальностей.</p>
+    </div>
+    <div class="steps">
+      <article class="step">
+        <span class="step__num">01</span>
+        <h3>Выбери байк</h3>
+        <p>Посмотри характеристики, цену за неделю/две/месяц и наличие.</p>
+      </article>
+      <article class="step">
+        <span class="step__num">02</span>
+        <h3>Договорись</h3>
+        <p>Позвони или напиши в Telegram/WhatsApp — уточним даты и детали.</p>
+      </article>
+      <article class="step">
+        <span class="step__num">03</span>
+        <h3>Забери и поезжай</h3>
+        <p>Забирай байк, получи инструктаж и отправляйся в маршрут.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<style>
+  .section__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-bottom: clamp(2rem, 6vw, 3.6rem);
+  }
+  .section__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .section__eyebrow::before {
+    content: '';
+    width: 12px;
+    height: 2px;
+    background: var(--yellow);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+  .step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: clamp(1.8rem, 4vw, 2.6rem);
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(245, 185, 27, 0.12) 0%, rgba(255,255,255,1) 70%);
+    overflow: hidden;
+  }
+  .step__num {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.6rem, 6vw, 4rem);
+    color: rgba(17, 17, 17, 0.08);
+    position: absolute;
+    top: -10px;
+    right: 20px;
+  }
+  .step h3 {
+    position: relative;
+    text-transform: uppercase;
+  }
+  .step p {
+    position: relative;
+    max-width: 280px;
+  }
+</style>

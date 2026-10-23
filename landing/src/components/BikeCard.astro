@@ -1,0 +1,195 @@
+---
+interface Price {
+  label: string;
+  amount: number;
+}
+
+interface Bike {
+  model: string;
+  slug: string;
+  color?: string;
+  year?: number;
+  battery_capacity?: number;
+  max_speed?: number;
+  range_km?: number;
+  photos?: string[];
+  available_count?: number;
+  prices: Price[];
+  deposit?: number;
+  per_day?: number;
+}
+
+interface Props {
+  bike: Bike;
+}
+
+const { bike } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const fmt = new Intl.NumberFormat('ru-RU');
+---
+<article class="bike-card">
+  <div class="bike-card__media">
+    <div class="bike-card__badge">В наличии: {bike.available_count ?? 'много'}</div>
+    <div class="bike-card__photo">
+      {bike.photos && bike.photos[0] ? (
+        <img src={bike.photos[0]} alt={bike.model} loading="lazy" />
+      ) : (
+        <div class="bike-card__placeholder">
+          <img src={`${base}logo.webp`} alt={bike.model} loading="lazy" onerror={`this.src='${base}logo.png'`} />
+        </div>
+      )}
+    </div>
+  </div>
+  <div class="bike-card__body">
+    <header class="bike-card__header">
+      <div>
+        <h3 class="bike-card__title">{bike.model}</h3>
+        <p class="bike-card__meta">{bike.color}{bike.year ? ` • ${bike.year}` : ''}</p>
+      </div>
+      <div class="bike-card__price-day">
+        <span class="bike-card__price-day-value">от {fmt.format(bike.per_day ?? Math.floor((bike.prices[0]?.amount || 6500)/7/10)*10)} ₽</span>
+        <span class="bike-card__price-day-label">за сутки</span>
+      </div>
+    </header>
+    <ul class="bike-card__specs">
+      {bike.battery_capacity && <li><span>Батарея</span><span>{bike.battery_capacity} Ач</span></li>}
+      {bike.max_speed && <li><span>Макс. скорость</span><span>{bike.max_speed} км/ч</span></li>}
+      {bike.range_km && <li><span>Запас хода</span><span>{bike.range_km} км</span></li>}
+    </ul>
+    <div class="bike-card__prices">
+      {bike.prices.map((price) => (
+        <div class="bike-card__price-row">
+          <span>{price.label}</span>
+          <span class="bike-card__price-row-value">{fmt.format(price.amount)} ₽</span>
+        </div>
+      ))}
+    </div>
+    <p class="bike-card__note">Цена за сутки рассчитана при аренде от недели. Точный расчёт в день аренды.</p>
+  </div>
+</article>
+
+<style>
+  .bike-card {
+    display: grid;
+    grid-template-columns: 1fr;
+    border-radius: 28px;
+    background: #fff;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 60px 120px -90px rgba(17, 17, 17, 0.9);
+    min-height: 100%;
+  }
+  .bike-card__media {
+    position: relative;
+    background: radial-gradient(circle at top, rgba(245, 185, 27, 0.18), transparent 60%);
+    padding: clamp(1.5rem, 4vw, 2.6rem);
+  }
+  .bike-card__badge {
+    position: absolute;
+    top: 1.2rem;
+    left: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    background: var(--yellow);
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .bike-card__photo,
+  .bike-card__placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 220px;
+  }
+  .bike-card__photo img {
+    width: min(360px, 70vw);
+    filter: drop-shadow(0 60px 80px rgba(17, 17, 17, 0.18));
+  }
+  .bike-card__placeholder img {
+    width: min(260px, 60vw);
+    opacity: 0.9;
+  }
+  .bike-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    padding: clamp(1.8rem, 4vw, 2.8rem);
+  }
+  .bike-card__header {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .bike-card__title {
+    text-transform: uppercase;
+  }
+  .bike-card__meta {
+    margin-top: 0.4rem;
+    color: var(--text-secondary);
+  }
+  .bike-card__price-day {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+  }
+  .bike-card__price-day-value {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  }
+  .bike-card__price-day-label {
+    color: var(--text-secondary);
+  }
+  .bike-card__specs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.8rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .bike-card__specs li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.8rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(17, 17, 17, 0.01);
+  }
+  .bike-card__prices {
+    display: grid;
+    gap: 0.6rem;
+  }
+  .bike-card__price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .bike-card__price-row-value {
+    font-weight: 600;
+  }
+  .bike-card__note {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+  @media (min-width: 880px) {
+    .bike-card {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .bike-card__header {
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .bike-card__price-day {
+      align-items: flex-end;
+    }
+  }
+</style>
