@@ -114,8 +114,43 @@ docker compose ps
 
 Полезные адреса:
 - Админка: http://localhost:3000
-- API + Swagger: http://localhost:8000/docs
+- Health (через nginx): http://localhost:3000/health
+- API + Swagger напрямую (только с самого ПК): http://localhost:8000/docs
 - Статус сервисов: значок колокольчика в сайдбаре CRM
+
+---
+
+## Шаг 5.1. Доступ из сети (другие ПК / интернет)
+
+Единая точка входа — **порт 3000** (контейнер `bike-crm-nginx`):
+
+| Путь | Куда идёт |
+|------|-----------|
+| `/`, страницы CRM | frontend |
+| `/api/*`, `/uploads/*`, `/health` | backend |
+
+Снаружи нужен **только порт 3000** — Keenetic/роутер перенаправляет на него,
+nginx сам разруливает API и файлы. Порт 8000 наружу открывать не нужно.
+
+1. Firewall (PowerShell от администратора, если ещё не открывали):
+   ```powershell
+   netsh advfirewall firewall add rule name="CRM-3000" dir=in action=allow protocol=TCP localport=3000
+   ```
+2. На Keenetic — перенаправление внешнего порта (например 443) на `192.168.1.10:3000`.
+3. В `.env` обязательно:
+   ```
+   NEXT_PUBLIC_API_URL=
+   ```
+   (пусто = same-origin: браузер ходит API по тому же адресу, что и страница;
+   при другом значении удалённый логин падает с «неверной парой» из-за CORS/mixed content).
+4. Пересоздать контейнеры: `docker compose up -d --force-recreate frontend nginx`.
+
+Проверка с любого ПК: `http://<адрес>:3000/health` → `{"status":"ok",...}`.
+
+Если раньше открывали 8000 наружу — можно закрыть:
+```powershell
+netsh advfirewall firewall delete rule name="CRM-api-8000"
+```
 
 ---
 
@@ -167,7 +202,7 @@ Push тега запускает Actions (`.github/workflows/release.yml`) — �
 
 | Симптом | Решение |
 |---------|---------|
-| `port is already allocated` | порт занят другим процессом: `netstat -ano \| findstr :3000` → остановить конфликтующее приложение или изменить `FRONTEND_PORT` в `.env` |
+| `port is already allocated` | порт занят другим процессом: `netstat -ano \| findstr :3000` → остановить конфликтующее приложение |
 | Docker не запускается | включить WSL2: `wsl --set-default-version 2`, перезагрузить ПК, запустить Docker Desktop от админа |
 | `docker compose` пишет про старый синтаксис | обновить Docker Desktop (compose v2 входит в комплект) |
 | Фронтенд отдаёт старые страницы | `docker compose restart frontend` |

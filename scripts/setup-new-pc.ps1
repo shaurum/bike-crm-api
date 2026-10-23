@@ -118,17 +118,17 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail "alembic upgrade failed" }
     Ok "migrations applied"
 
-    # --- 6. Wait for API ----------------------------------------------------
-    Step "Waiting for API on :8000..."
+    # --- 6. Wait for API (через nginx на :3000) ------------------------------
+    Step "Waiting for stack on :3000 (nginx -> api)..."
     $deadline = (Get-Date).AddSeconds(120)
     $apiUp = $false
     while ((Get-Date) -lt $deadline) {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -TimeoutSec 3
+            $resp = Invoke-WebRequest -Uri "http://localhost:3000/health" -UseBasicParsing -TimeoutSec 3
             if ($resp.StatusCode -eq 200) { $apiUp = $true; break }
         } catch { Start-Sleep -Seconds 3 }
     }
-    if (-not $apiUp) { Warn "API not answering yet - check: docker compose logs api" } else { Ok "API is up" }
+    if (-not $apiUp) { Warn "Stack not answering yet - check: docker compose logs nginx api" } else { Ok "Stack is up (:3000 via nginx)" }
 }
 finally {
     Pop-Location

@@ -1,7 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/lib/store";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Пусто = same-origin: запросы идут на тот же хост/порт, что и страница,
+// их маршрутизирует nginx (/api, /uploads -> backend).
+// Можно задать абсолютный URL через NEXT_PUBLIC_API_URL для особых схем.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export { API_URL };
 
