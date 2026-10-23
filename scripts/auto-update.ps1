@@ -196,11 +196,27 @@ try {
     Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
 
-    & curl.exe -sS -L `
-        -H "Authorization: token $token" `
-        -H "Accept: application/octet-stream" `
-        -o $zipPath $asset.url
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zipPath)) {
+    # Некоторые ПК: системный curl не доверяет корням (HTTPS-инспекция
+    # антивируса подменяет сертификат) -> curl exit 60. Цепочка попыток:
+    # 1) обычный curl; 2) schannel (сертификаты Windows); 3) без проверки TLS.
+    $downloaded = $false
+    $attempts = @(
+        @(),
+        @("--ssl-backend", "schannel"),
+        @("-k")
+    )
+    foreach ($extra in $attempts) {
+        & curl.exe -sS -L @extra `
+            -H "Authorization: token $token" `
+            -H "Accept: application/octet-stream" `
+            -o $zipPath $asset.url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $zipPath) -and ((Get-Item $zipPath).Length -gt 0)) {
+            $downloaded = $true
+            break
+        }
+        Log ("скачивание: попытка не удалась (exit=$LASTEXITCODE, extra=$($extra -join ' '))")
+    }
+    if (-not $downloaded) {
         Write-State "false" "ошибка скачивания $latestTag" $latestTag $true
         Log "скачивание не удалось"
         exit 1
