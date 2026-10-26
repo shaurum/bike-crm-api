@@ -116,7 +116,9 @@ async def update_company_settings(
     """Правка реквизитов, которые подставляются в договоры."""
     company = await _get_company(db)
     if not company:
-        raise HTTPException(status_code=404, detail="Реквизиты арендодателя не заданы")
+        # Реквизиты ещё не заведены (база без seed): создаём при первом сохранении
+        company = CompanyProfile()
+        db.add(company)
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(company, field, value)

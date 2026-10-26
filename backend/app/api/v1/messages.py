@@ -544,12 +544,18 @@ async def _deliver(
                 )
             if recipient.external_id != address:
                 recipient.external_id = address
-            # Текст обязателен для очереди шлюза: при одном вложении шлём ссылки
-            out_text = content.strip() or "\n".join(urls) or "Вложение"
+            # Шлюз забирает файлы по полным ссылкам: путь /uploads/... ему недоступен
+            media = _public_media_urls(urls)
+            if urls and not media and not content.strip():
+                return "Вложение не отправлено: в .env не задан PUBLIC_BASE_URL"
+            # Текст обязателен для очереди шлюза: без подписи шлём «Вложение»
+            out_text = content.strip() or "Вложение"
             try:
                 await gateway.enqueue_outbound(
-                    address, out_text, source="telegram", media=urls or None
+                    address, out_text, source="telegram", media=media or None
                 )
+                if urls and not media:
+                    return "Текст отправлен, вложение нет: в .env не задан PUBLIC_BASE_URL"
                 return None
             except gateway.GatewayError as exc:
                 return f"Шлюз не принял сообщение: {exc}"
@@ -673,6 +679,14 @@ def _resolve_upload(url: str) -> Optional[str]:
     if not target.startswith(root + os.sep):
         return None
     return target if os.path.isfile(target) else None
+
+
+def _public_media_urls(urls: List[str]) -> List[str]:
+    """Полные ссылки на файлы из uploads/ для шлюза; без PUBLIC_BASE_URL отдавать нечего."""
+    base = settings.PUBLIC_BASE_URL.rstrip("/")
+    if not base:
+        return []
+    return [base + url for url in urls if url.startswith("/uploads/")]
 
 
 async def _send_telegram_files(token: str, chat_id: str, attachments: List[dict]) -> None:

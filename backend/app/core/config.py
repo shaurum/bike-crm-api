@@ -98,6 +98,8 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "/app/uploads"
     MAX_UPLOAD_MB: int = 8
+    # Публичный адрес сайта без / на конце: шлюз Telegram скачивает вложения по нему
+    PUBLIC_BASE_URL: str = ""
 
 
 @lru_cache
