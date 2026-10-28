@@ -63,6 +63,17 @@ export function formatDate(date: string | Date, format: string = "dd.MM.yyyy"): 
     .replace("mm", minutes);
 }
 
+// Границы для поля «Дата рождения»: min/max у input type="date".
+export const BIRTH_DATE_MIN = "1900-01-01";
+
+// Сегодняшняя дата YYYY-MM-DD по локальному времени (не по UTC).
+export function todayLocalISO(): string {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",

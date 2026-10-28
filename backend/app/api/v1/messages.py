@@ -102,7 +102,11 @@ def _preview(msg: Optional[LeadMessage]) -> Optional[str]:
 def _deal_state(lead: Optional[Lead]) -> str:
     if not lead:
         return "none"
-    return "active" if lead.status in ACTIVE_STATUSES else "deal_closed"
+    if lead.status in ACTIVE_STATUSES:
+        return "active"
+    if lead.status == LeadStatus.WON:
+        return "won"
+    return "lost"
 
 
 async def _load_customer(db: AsyncSession, customer_id: UUID) -> Customer:

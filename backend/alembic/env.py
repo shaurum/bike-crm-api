@@ -19,6 +19,20 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def compare_server_default(
+    context, inspected_column, metadata_column, inspected_default, metadata_default, rendered_metadata_default
+):
+    """Сравнение server default.
+
+    Если у колонки модели нет server_default, считаем значения равными: в БД
+    default остаётся от миграций, а в моделях хватает Python-default.
+    В остальных случаях решение за стандартным сравнением alembic.
+    """
+    if metadata_column.server_default is None:
+        return False
+    return None
+
+
 def get_url():
     return str(settings.DATABASE_URL)
 
@@ -31,7 +45,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
-        compare_server_default=True,
+        compare_server_default=compare_server_default,
     )
 
     with context.begin_transaction():
@@ -43,7 +57,7 @@ def do_run_migrations(connection: Connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
-        compare_server_default=True,
+        compare_server_default=compare_server_default,
     )
 
     with context.begin_transaction():

@@ -33,7 +33,7 @@ interface ConversationItem {
   customer_id: string;
   customer_name: string;
   lead_id: string | null;
-  deal_state: "active" | "deal_closed" | "none";
+  deal_state: "active" | "won" | "lost" | "none";
   preview: string | null;
   channel: string | null;
   awaiting_reply: boolean;
@@ -79,7 +79,7 @@ interface ConversationDetail {
   customer_phone: string | null;
   customer_email: string | null;
   lead_id: string | null;
-  deal_state: "active" | "deal_closed" | "none";
+  deal_state: "active" | "won" | "lost" | "none";
   contacts: ContactPoint[];
   messages: MessageItem[];
   channels: string[];
@@ -96,8 +96,9 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 const DEAL_LABELS: Record<string, string> = {
-  active: "В аренде",
-  deal_closed: "Сделки нет",
+  active: "В работе",
+  won: "Сделка заключена",
+  lost: "Отказ",
   none: "Нет сделки",
 };
 
@@ -126,15 +127,22 @@ function AwaitingBadge() {
 function DealBadge({ state }: { state: string }) {
   if (state === "active") {
     return (
-      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">
         {DEAL_LABELS.active}
       </span>
     );
   }
-  if (state === "deal_closed") {
+  if (state === "won") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+        {DEAL_LABELS.won}
+      </span>
+    );
+  }
+  if (state === "lost") {
     return (
       <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-        {DEAL_LABELS.deal_closed}
+        {DEAL_LABELS.lost}
       </span>
     );
   }
@@ -909,8 +917,8 @@ export default function MessagesPage() {
           <div className="flex flex-wrap gap-1">
             {[
               { key: "all", label: "Все" },
-              { key: "active", label: "В аренде" },
-              { key: "closed", label: "Без сделки" },
+              { key: "active", label: "В работе" },
+              { key: "closed", label: "Закрытые" },
             ].map((item) => (
               <button
                 key={item.key}
@@ -1106,7 +1114,8 @@ export default function MessagesPage() {
                   <p className="font-medium text-foreground">
                     {DEAL_LABELS[conversation.deal_state]}
                   </p>
-                  {conversation.deal_state === "deal_closed" && (
+                  {(conversation.deal_state === "won" ||
+                    conversation.deal_state === "lost") && (
                     <p>
                       Завершённая сделка сохранена в истории, байк свободен.
                       Новое сообщение создаст новую сделку.

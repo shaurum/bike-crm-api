@@ -53,7 +53,7 @@ class LeadSource(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lead_source"
 
     type: Mapped[LeadSourceType] = mapped_column(
-        SQLEnum(LeadSourceType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(LeadSourceType, name="lead_source_type_enum", values_callable=lambda x: [m.value for m in x]),
         nullable=False,
         comment="Тип источника",
     )
@@ -111,7 +111,7 @@ class Lead(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     client_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Email клиента")
 
     status: Mapped[LeadStatus] = mapped_column(
-        SQLEnum(LeadStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(LeadStatus, name="lead_status_enum", values_callable=lambda x: [m.value for m in x]),
         default=LeadStatus.NEW,
         nullable=False,
         comment="Статус лида",
@@ -249,7 +249,7 @@ class Task(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "task"
 
     type: Mapped[TaskType] = mapped_column(
-        SQLEnum(TaskType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(TaskType, name="task_type_enum", values_callable=lambda x: [m.value for m in x]),
         nullable=False,
         comment="Тип задачи",
     )
@@ -257,13 +257,13 @@ class Task(UUIDMixin, TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Описание")
     due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Дедлайн")
     status: Mapped[TaskStatus] = mapped_column(
-        SQLEnum(TaskStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(TaskStatus, name="task_status_enum", values_callable=lambda x: [m.value for m in x]),
         default=TaskStatus.TODO,
         nullable=False,
         comment="Статус",
     )
     priority: Mapped[TaskPriority] = mapped_column(
-        SQLEnum(TaskPriority, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(TaskPriority, native_enum=False, length=10, values_callable=lambda x: [m.value for m in x]),
         default=TaskPriority.NORMAL,
         server_default="normal",
         nullable=False,
@@ -378,13 +378,13 @@ class Document(UUIDMixin, TimestampMixin, Base):
         comment="Байк",
     )
     kind: Mapped[DocumentKind] = mapped_column(
-        SQLEnum(DocumentKind, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(DocumentKind, native_enum=False, length=40, values_callable=lambda x: [m.value for m in x]),
         default=DocumentKind.CONTRACT_RENTAL,
         nullable=False,
         comment="Тип документа",
     )
     status: Mapped[DocumentStatus] = mapped_column(
-        SQLEnum(DocumentStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(DocumentStatus, native_enum=False, length=20, values_callable=lambda x: [m.value for m in x]),
         default=DocumentStatus.DRAFT,
         nullable=False,
         comment="Статус",

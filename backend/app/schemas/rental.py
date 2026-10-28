@@ -2,9 +2,24 @@ from datetime import date, datetime
 from typing import Optional, List
 from enum import Enum
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 
 from app.models import BikeStatus, BookingStatus, UserRole
+
+BIRTH_DATE_MIN = date(1900, 1, 1)
+
+
+def validate_birth_date(value: Optional[date]) -> Optional[date]:
+    """Дата рождения: None или от 01.01.1900 до сегодняшнего дня.
+
+    Применяется только к входящим схемам: старые некорректные данные в БД
+    должны по-прежнему читаться через response-схемы.
+    """
+    if value is None:
+        return value
+    if value < BIRTH_DATE_MIN or value > date.today():
+        raise ValueError("Дата рождения должна быть между 01.01.1900 и сегодняшним днём")
+    return value
 
 
 class BranchBase(BaseModel):
@@ -241,7 +256,12 @@ class CustomerBase(BaseModel):
 
 
 class CustomerCreate(CustomerBase):
-    pass
+    # Валидатор только здесь, а не в CustomerBase: CustomerResponse наследует Base,
+    # и старые данные с некорректной датой должны читаться.
+    @field_validator("birth_date")
+    @classmethod
+    def _check_birth_date(cls, v: Optional[date]) -> Optional[date]:
+        return validate_birth_date(v)
 
 
 class CustomerUpdate(BaseModel):
@@ -261,6 +281,11 @@ class CustomerUpdate(BaseModel):
     driver_license: Optional[str] = None
     notes: Optional[str] = None
     is_blacklisted: Optional[bool] = None
+
+    @field_validator("birth_date")
+    @classmethod
+    def _check_birth_date(cls, v: Optional[date]) -> Optional[date]:
+        return validate_birth_date(v)
 
 
 class CustomerResponse(CustomerBase):

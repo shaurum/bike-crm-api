@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { customersApi, api, API_URL } from "@/lib/api";
 import { ChannelIcon } from "@/components/channel-icon";
-import { apiErrorMessage, cn } from "@/lib/utils";
+import { apiErrorMessage, cn, BIRTH_DATE_MIN, todayLocalISO } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
 interface CustomerDoc {
@@ -1065,6 +1065,8 @@ export function CustomerDialog({
                     <Input
                       id="c-birth"
                       type="date"
+                      min={BIRTH_DATE_MIN}
+                      max={todayLocalISO()}
                       value={birthDate}
                       onChange={(e) => setBirthDate(e.target.value)}
                     />
@@ -1445,6 +1447,8 @@ function AddCustomerDialog({ onCreated }: { onCreated: () => void }) {
               <Input
                 id="nc-birth"
                 type="date"
+                min={BIRTH_DATE_MIN}
+                max={todayLocalISO()}
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
               />

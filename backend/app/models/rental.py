@@ -66,7 +66,7 @@ class Bike(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     purchase_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="Цена закупки")
     purchase_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Дата закупки")
     status: Mapped[BikeStatus] = mapped_column(
-        SQLEnum(BikeStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(BikeStatus, name="bike_status_enum", values_callable=lambda x: [m.value for m in x]),
         default=BikeStatus.AVAILABLE,
         nullable=False,
         comment="Статус байка",
@@ -122,7 +122,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="ФИО")
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Телефон")
     role: Mapped[UserRole] = mapped_column(
-        SQLEnum(UserRole, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(UserRole, name="user_role_enum", values_callable=lambda x: [m.value for m in x]),
         default=UserRole.MANAGER,
         nullable=False,
         comment="Роль",
@@ -175,7 +175,7 @@ class Customer(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
     driver_license: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="Водительское удостоверение")
 
     document_type: Mapped[CustomerDocumentType] = mapped_column(
-        SQLEnum(CustomerDocumentType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(CustomerDocumentType, native_enum=False, length=30, values_callable=lambda x: [m.value for m in x]),
         default=CustomerDocumentType.PASSPORT_RF,
         nullable=False,
         comment="Тип документа, удостоверяющего личность",
@@ -205,6 +205,7 @@ class Customer(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_customer_email", "email"),
         Index("ix_customer_passport", "passport_series", "passport_number"),
         Index("ix_customer_full_name", "full_name"),
+        Index("ix_customer_birth_date", "birth_date"),
     )
 
 
@@ -218,7 +219,7 @@ class CustomerDocument(UUIDMixin, TimestampMixin, Base):
         comment="Клиент",
     )
     kind: Mapped[CustomerDocumentType] = mapped_column(
-        SQLEnum(CustomerDocumentType, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(CustomerDocumentType, native_enum=False, length=30, values_callable=lambda x: [m.value for m in x]),
         default=CustomerDocumentType.PASSPORT_RF,
         nullable=False,
         comment="Что за документ",
@@ -275,7 +276,7 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     actual_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, comment="Фактический конец")
 
     status: Mapped[BookingStatus] = mapped_column(
-        SQLEnum(BookingStatus, native_enum=False, values_callable=lambda x: [m.value for m in x]),
+        SQLEnum(BookingStatus, name="booking_status_enum", values_callable=lambda x: [m.value for m in x]),
         default=BookingStatus.PENDING,
         nullable=False,
         comment="Статус брони",
