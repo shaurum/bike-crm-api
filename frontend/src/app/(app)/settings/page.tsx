@@ -53,6 +53,19 @@ interface CompanyProfile {
   photo_consent: string | null;
 }
 
+const EMPTY_COMPANY: CompanyProfile = {
+  name: "",
+  ogrnip: null,
+  inn: null,
+  phone: null,
+  email: null,
+  address: null,
+  return_address: null,
+  age_restriction: null,
+  deposit_return: null,
+  photo_consent: null,
+};
+
 const COMPANY_FIELDS: {
   key: keyof CompanyProfile;
   label: string;
@@ -75,17 +88,22 @@ function GeneralTab() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CompanyProfile | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["settings", "company"],
     queryFn: async () => {
       const { data } = await api.get<CompanyProfile>("/settings/company");
       return data;
     },
+    // 404 значит, что реквизитов ещё нет: не повторяем запрос, а показываем пустую форму
+    retry: (count, err) =>
+      (err as { response?: { status?: number } })?.response?.status !== 404 && count < 2,
   });
+  const notFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
   useEffect(() => {
     if (data) setForm(data);
-  }, [data]);
+    else if (notFound) setForm(EMPTY_COMPANY);
+  }, [data, notFound]);
 
   const save = useMutation({
     mutationFn: async (payload: CompanyProfile) => {
@@ -99,6 +117,14 @@ function GeneralTab() {
       toast({ title: "Ошибка", description: apiErrorMessage(error, "Не удалось сохранить реквизиты") });
     },
   });
+
+  if (error && !notFound) {
+    return (
+      <p className="text-sm text-red-600">
+        Не удалось загрузить реквизиты. Проверьте соединение и обновите страницу.
+      </p>
+    );
+  }
 
   if (isLoading || !form) {
     return <p className="text-sm text-muted-foreground">Загрузка реквизитов…</p>;

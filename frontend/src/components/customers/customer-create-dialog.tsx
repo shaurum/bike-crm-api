@@ -1,6 +1,6 @@
 "use client";
 
-import { apiErrorMessage } from "@/lib/utils";
+import { apiErrorMessage, BIRTH_DATE_MIN, todayLocalISO } from "@/lib/utils";
 
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
@@ -203,6 +203,8 @@ export function CustomerCreateDialog({
               <Input
                 id="cc-birth"
                 type="date"
+                min={BIRTH_DATE_MIN}
+                max={todayLocalISO()}
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
               />

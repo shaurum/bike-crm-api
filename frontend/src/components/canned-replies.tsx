@@ -26,7 +26,10 @@ export function CannedRepliesMenu({
 }) {
   const queryClient = useQueryClient();
   const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  // Меню рисуем fixed по координатам кнопки: родительские overflow-hidden его не обрезают
+  const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null);
   const [manage, setManage] = useState(false);
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -118,8 +121,19 @@ export function CannedRepliesMenu({
   return (
     <div ref={wrapRef} className="relative shrink-0">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const width = Math.min(320, window.innerWidth - 16);
+            setPos({
+              left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+              bottom: window.innerHeight - rect.top + 8,
+            });
+          }
+          setOpen((v) => !v);
+        }}
         title="Предзаписанные сообщения"
         className={cn(
           "flex h-[38px] w-[38px] items-center justify-center rounded-md border transition-colors",
@@ -132,7 +146,10 @@ export function CannedRepliesMenu({
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-80 rounded-lg border bg-background shadow-lg">
+        <div
+          style={pos ? { left: pos.left, bottom: pos.bottom } : undefined}
+          className="fixed z-50 w-80 max-w-[calc(100vw-1rem)] rounded-lg border bg-background shadow-lg"
+        >
           <div className="flex items-center gap-1.5 border-b p-2">
             <input
               value={search}

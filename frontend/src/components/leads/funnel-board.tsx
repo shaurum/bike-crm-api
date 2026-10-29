@@ -851,7 +851,11 @@ export function FunnelBoard() {
         <p className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</p>
       )}
 
-      {isDesktop ? (
+      {!loading && stages.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          Этапы воронки не настроены. Обновите страницу или обратитесь к администратору.
+        </div>
+      ) : isDesktop ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}

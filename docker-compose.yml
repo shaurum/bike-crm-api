@@ -58,6 +58,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - GATEWAY_URL=${GATEWAY_URL:-}
       - GATEWAY_TOKEN=${GATEWAY_TOKEN:-}
       - ENVIRONMENT=${ENVIRONMENT}
@@ -84,6 +85,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: bike-crm-frontend
+    # npm install при старте: анонимный том node_modules переживает пересборку образа,
+    # поэтому новые зависимости из package.json подтягиваем здесь
+    command: sh -c "npm install --no-audit --no-fund && npx next dev -p 3000"
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     volumes:

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -65,6 +66,8 @@ class ContactPoint(Base):
 
     __table_args__ = (
         UniqueConstraint("customer_id", "channel", "value", name="uq_contact_point_value"),
+        Index("ix_contact_point_channel_value", "channel", "value"),
+        Index("ix_contact_point_external_id", "external_id"),
     )
 
 
@@ -117,4 +120,5 @@ class Conversation(Base):
 
     __table_args__ = (
         UniqueConstraint("customer_id", name="uq_conversation_customer"),
+        Index("ix_conversation_last_message", "last_message_at"),
     )

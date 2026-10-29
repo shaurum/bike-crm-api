@@ -49,8 +49,8 @@ class ConversationListResponse(BaseModel):
     customer_id: UUID
     customer_name: str
     lead_id: Optional[UUID] = None
-    # Пометка «сделки нет / не в аренде»
-    deal_state: str = Field("none", description="active / deal_closed / none")
+    # Метка сделки: в работе / заключена / отказ / нет сделки
+    deal_state: str = Field("none", description="active / won / lost / none")
     preview: Optional[str] = None
     channel: Optional[str] = None
     # Последнее сообщение пришло от клиента — мы ещё не ответили
@@ -95,7 +95,7 @@ class ConversationDetailResponse(BaseModel):
     customer_phone: Optional[str] = None
     customer_email: Optional[str] = None
     lead_id: Optional[UUID] = None
-    deal_state: str = "none"
+    deal_state: str = Field("none", description="active / won / lost / none")
     contacts: List[ContactPointResponse] = Field(default_factory=list)
     messages: List[MessageResponse] = Field(default_factory=list)
     channels: List[str] = Field(default_factory=list)
