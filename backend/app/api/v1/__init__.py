@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 api_router = APIRouter()
 
-from app.api.v1 import health, auth, invites, system, leads, bikes, bookings, customers, tasks, users, documents, webhooks, public, dashboard, settings, messages, kb, canned
+from app.api.v1 import health, auth, invites, system, leads, bikes, bookings, customers, tasks, users, documents, webhooks, public, dashboard, settings, messages, kb, canned, tracking
 
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
@@ -22,3 +22,4 @@ api_router.include_router(settings.router, prefix="/settings", tags=["settings"]
 api_router.include_router(messages.router, prefix="/conversations", tags=["messages"])
 api_router.include_router(kb.router, tags=["kb"])
 api_router.include_router(canned.router, tags=["canned"])
+api_router.include_router(tracking.router, tags=["tracking"])

@@ -7,6 +7,7 @@ import {
   MessageSquare,
   ListChecks,
   BookOpen,
+  MapPin,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -24,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/orders", label: "Заказы", icon: ClipboardList },
   { href: "/customers", label: "Клиенты", icon: Users },
   { href: "/parking", label: "Парковка", icon: Bike },
+  { href: "/map", label: "Карта", icon: MapPin },
   { href: "/documents", label: "Документы", icon: FileText },
   { href: "/messages", label: "Сообщения", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: ListChecks },

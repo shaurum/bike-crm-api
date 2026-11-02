@@ -12,6 +12,7 @@ import {
   RefreshCw,
   CalendarDays,
   Wallet,
+  MapPin,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { bikesApi, API_URL } from "@/lib/api";
+import { BikeTrackingPanel } from "@/components/tracking/bike-tracking-panel";
+import {
+  accountLabel,
+  FleetData,
+  formatAgo,
+  TrackerPosition,
+} from "@/components/tracking/tracking-format";
+import { bikesApi, trackingApi, API_URL } from "@/lib/api";
 import { apiErrorMessage, formatCurrency, cn } from "@/lib/utils";
 
 interface PriceRow {
@@ -54,6 +62,7 @@ interface BikeItem {
   range_km: number | null;
   purchase_date: string | null;
   notes: string | null;
+  tracker_id: number | null;
   status: string;
   is_rented: boolean;
   active_booking_status: string | null;
@@ -131,10 +140,12 @@ function BikePhoto({ bike, className }: { bike: BikeItem; className?: string }) 
 
 export function BikeCard({
   bike,
+  position,
   onOpen,
   onDelete,
 }: {
   bike: BikeItem;
+  position?: TrackerPosition | null;
   onOpen: (id: string) => void;
   onDelete: (bike: BikeItem) => void;
 }) {
@@ -200,6 +211,24 @@ export function BikeCard({
             </span>
           )}
         </div>
+
+        {bike.tracker_id != null && (
+          <button
+            type="button"
+            onClick={() => onOpen(bike.id)}
+            className="flex items-center gap-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+          >
+            <MapPin
+              className={cn("h-3 w-3 shrink-0", position?.online && "text-green-600")}
+              aria-hidden
+            />
+            <span className="truncate">
+              {position?.online ? "На связи" : "Нет связи"}
+              {position ? `, ${formatAgo(position.reception_time)}` : ""}
+              {position?.tracker_battery != null ? ` · батарея ${position.tracker_battery}%` : ""}
+            </span>
+          </button>
+        )}
 
         <div className="mt-auto space-y-0.5 border-t pt-2 text-xs">
           <p className="flex justify-between">
@@ -431,6 +460,20 @@ export function BikeDialog({
                   </p>
                 </div>
               </div>
+
+              <BikeTrackingPanel
+                bikeId={bike.id}
+                trackerId={bike.tracker_id ?? null}
+                model={bike.model}
+                onBound={(data) => {
+                  setBike((current) =>
+                    current
+                      ? { ...current, tracker_id: (data as BikeItem).tracker_id ?? null }
+                      : current
+                  );
+                  onSaved();
+                }}
+              />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
@@ -807,9 +850,27 @@ export function ParkingGarage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<BikeItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [fleet, setFleet] = useState<FleetData | null>(null);
+
+  const loadFleet = useCallback(() => {
+    // Сбой мониторинга не должен мешать работе с гаражом
+    trackingApi
+      .fleet()
+      .then((res) => setFleet(res.data as FleetData))
+      .catch(() => setFleet(null));
+  }, []);
+
+  useEffect(() => {
+    loadFleet();
+    const timer = setInterval(() => {
+      if (!document.hidden) loadFleet();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [loadFleet]);
 
   const load = useCallback(async () => {
     setError("");
+    loadFleet();
     try {
       const [bikesRes, brRes] = await Promise.all([
         bikesApi.list({ size: 100, search: search || undefined }),
@@ -822,7 +883,7 @@ export function ParkingGarage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, loadFleet]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 300 : 0);
@@ -859,6 +920,11 @@ export function ParkingGarage() {
           <Badge variant="secondary">Всего: {bikes.length}</Badge>
           <Badge>Свободно: {bikes.length - rentedCount}</Badge>
           <Badge variant="secondary">В аренде: {rentedCount}</Badge>
+          {fleet && (
+            <Badge variant={accountLabel(fleet.account).tone === "ok" ? "secondary" : "destructive"}>
+              {accountLabel(fleet.account).text}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Input
@@ -889,6 +955,7 @@ export function ParkingGarage() {
             <BikeCard
               key={bike.id}
               bike={bike}
+              position={fleet?.bikes.find((b) => b.id === bike.id)?.position}
               onOpen={setSelectedId}
               onDelete={setToDelete}
             />

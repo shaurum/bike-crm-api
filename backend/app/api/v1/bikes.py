@@ -252,6 +252,20 @@ async def restore_status_from_crm(db: AsyncSession, bike) -> None:
         bike.status = target
 
 
+async def _ensure_tracker_free(
+    db: AsyncSession, tracker_id: int, bike_id: Optional[UUID] = None
+) -> None:
+    query = select(Bike.model).where(Bike.tracker_id == tracker_id)
+    if bike_id:
+        query = query.where(Bike.id != bike_id)
+    owner = (await db.execute(query)).scalars().first()
+    if owner:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Трекер #{tracker_id} уже привязан к байку {owner}",
+        )
+
+
 @router.post("", response_model=BikeResponse, status_code=status.HTTP_201_CREATED)
 async def create_bike(
     payload: BikeCreate,
@@ -259,6 +273,8 @@ async def create_bike(
     current_user: User = Depends(get_current_user),
 ):
     data = payload.model_dump(exclude={"prices"})
+    if data.get("tracker_id") is not None:
+        await _ensure_tracker_free(db, data["tracker_id"])
     bike = Bike(**data)
     db.add(bike)
     await db.flush()
@@ -279,6 +295,8 @@ async def update_bike(
         raise HTTPException(status_code=404, detail="Байк не найден")
 
     data = payload.model_dump(exclude={"prices"}, exclude_unset=True)
+    if data.get("tracker_id") is not None:
+        await _ensure_tracker_free(db, data["tracker_id"], bike_id)
     for field, value in data.items():
         setattr(bike, field, value)
 
@@ -315,6 +333,8 @@ async def delete_bike(
         )
 
     bike.deleted_at = datetime.now(timezone.utc)
+    # Трекер освобождается для другого байка: индекс уникальный и видит удалённые записи
+    bike.tracker_id = None
     await db.commit()
     return None
 
