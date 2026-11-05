@@ -157,10 +157,61 @@ export interface SystemVersion {
   auto_update: boolean;
   mode: "auto" | "manual";
   note: string | null;
+  /** Скрипт обновления хоть раз отработал на этой машине. */
+  configured: boolean;
+  /** Скрипт давно не запускался — планировщик не работает. */
+  stale: boolean;
+  stage: UpdateStage;
+  progress: number;
+  target_tag: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  download_percent: number | null;
+  download_bytes: number | null;
+  download_total: number | null;
+  /** Запрос на установку ждёт следующего запуска скрипта. */
+  queued: boolean;
+  queued_tag: string | null;
+}
+
+export type UpdateStage =
+  | "idle"
+  | "checking"
+  | "downloading"
+  | "extracting"
+  | "copying"
+  | "building"
+  | "migrating"
+  | "restarting"
+  | "done"
+  | "error";
+
+export interface ReleaseInfo {
+  tag: string;
+  name: string;
+  published_at: string | null;
+  prerelease: boolean;
+  url: string | null;
+  size: number | null;
+  installable: boolean;
+  is_current: boolean;
+  is_latest: boolean;
 }
 
 export const systemApi = {
   version: () => api.get<SystemVersion>("/system/version"),
+  releases: (refresh = false) =>
+    api.get<{ items: ReleaseInfo[]; latest: string | null; current: string | null }>(
+      "/system/releases",
+      { params: refresh ? { refresh: true } : undefined }
+    ),
+  releaseChanges: (tag: string) =>
+    api.get<{ tag: string; changes: string[] }>(`/system/releases/${encodeURIComponent(tag)}/changes`),
+  install: (tag: string | null) =>
+    api.post<{ ok: boolean; detail: string; mode_switched?: boolean }>("/system/update-install", { tag }),
+  cancel: () => api.post<{ ok: boolean }>("/system/update-cancel"),
+  log: () => api.get<{ lines: string[] }>("/system/update-log"),
   checkUpdate: () => api.post<{ ok: boolean; detail: string }>("/system/update-check"),
   setUpdateMode: (mode: "auto" | "manual") =>
     api.post<{ ok: boolean; mode: string }>("/system/update-mode", { mode }),

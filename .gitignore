@@ -61,4 +61,5 @@ backend/.update_state.json
 backend/.update_requested
 backend/.update_mode
 backend/.update.log
+backend/.update_job
 .release_tag

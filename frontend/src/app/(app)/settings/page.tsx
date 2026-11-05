@@ -17,11 +17,12 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
-import { api, systemApi } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { apiErrorMessage, cn } from "@/lib/utils";
 
 import KeysTab from "./keys-tab";
+import UpdateTab from "./update-tab";
 import UsersTab from "./users-tab";
 
 type TabKey = "general" | "account" | "users" | "integrations" | "keys" | "update";
@@ -1083,167 +1084,6 @@ function IntegrationsTab() {
   );
 }
 
-/* ---------- Обновление ---------- */
-
-function UpdateTab() {
-  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
-
-  const { data, refetch, isFetching } = useQuery({
-    queryKey: ["system", "version"],
-    queryFn: async () => (await systemApi.version()).data,
-    refetchInterval: (query) => (query.state.data?.updating ? 3000 : 60000),
-  });
-
-  const check = useMutation({
-    mutationFn: async () => (await systemApi.checkUpdate()).data,
-    onSuccess: (res) => {
-      toast({ title: res.ok ? "Проверка запущена" : "Недоступно", description: res.detail });
-      if (res.ok) {
-        setTimeout(() => refetch(), 2500);
-      }
-    },
-    onError: (error: { response?: { data?: { detail?: string } } }) =>
-      toast({
-        title: "Ошибка",
-        description: apiErrorMessage(error, "Не удалось запросить обновление"),
-      }),
-  });
-
-  const setMode = useMutation({
-    mutationFn: async (mode: "auto" | "manual") => (await systemApi.setUpdateMode(mode)).data,
-    onSuccess: (res) => {
-      toast({ title: "Режим обновления изменён", description: res.mode === "auto" ? "Новые версии ставятся автоматически" : "Обновления только по кнопке" });
-      refetch();
-    },
-    onError: (error: { response?: { data?: { detail?: string } } }) =>
-      toast({
-        title: "Ошибка",
-        description: apiErrorMessage(error, "Не удалось изменить режим"),
-      }),
-  });
-
-  if (!data) {
-    return <p className="text-sm text-muted-foreground">Загрузка версии…</p>;
-  }
-
-  const mode = data.mode === "manual" ? "manual" : "auto";
-  const versionLabel = data.current_tag || (data.current_sha ? `#${data.current_sha}` : "неизвестно");
-  const remoteLabel = data.current_tag && data.remote_sha && data.current_tag !== data.remote_sha
-    ? data.remote_sha
-    : data.remote_sha;
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-base font-semibold">Обновление CRM</h2>
-        <p className="text-sm text-muted-foreground">
-          Проверяет GitHub-релизы каждые 5 минут. Каждая версия — это тег
-          <span className="font-mono"> v*</span> с zip-архивом; откат — установить предыдущий релиз.
-        </p>
-      </div>
-
-      {isAdmin && (
-        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-          <div>
-            <p className="text-sm font-medium">Режим установки</p>
-            <p className="text-xs text-muted-foreground">
-              {mode === "auto"
-                ? "Новые версии устанавливаются сразу после проверки"
-                : "Обновление ставится только по кнопке «Проверить и установить»"}
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-1 rounded-md border p-1">
-            <button
-              onClick={() => setMode.mutate("auto")}
-              disabled={setMode.isPending || data.updating}
-              className={cn(
-                "rounded px-3 py-1 text-sm font-medium transition-colors disabled:opacity-50",
-                mode === "auto" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              Авто
-            </button>
-            <button
-              onClick={() => setMode.mutate("manual")}
-              disabled={setMode.isPending || data.updating}
-              className={cn(
-                "rounded px-3 py-1 text-sm font-medium transition-colors disabled:opacity-50",
-                mode === "manual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              Вручную
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-md border p-3">
-          <p className="text-xs text-muted-foreground">Текущая версия</p>
-          <p className="mt-1 font-mono text-sm">{versionLabel}</p>
-          {data.current_date && (
-            <p className="text-xs text-muted-foreground">
-              {new Date(data.current_date).toLocaleString("ru-RU")}
-            </p>
-          )}
-        </div>
-        <div className="rounded-md border p-3">
-          <p className="text-xs text-muted-foreground">Последняя проверка</p>
-          <p className="mt-1 text-sm">
-            {data.last_check
-              ? new Date(data.last_check).toLocaleString("ru-RU")
-              : "ещё не выполнялась"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {data.auto_update ? "Автообновление: включено (по расписанию)" : "Автообновление не настроено"}
-          </p>
-        </div>
-      </div>
-
-      {data.updating && (
-        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
-          Обновление устанавливается — CRM перезапустится через минуту
-        </div>
-      )}
-
-      {!data.updating && data.update_available && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Доступна новая версия {remoteLabel ? `${remoteLabel}` : ""}
-          {mode === "auto"
-            ? " — установится автоматически в течение минуты"
-            : " — нажмите «Проверить и установить»"}
-        </div>
-      )}
-
-      {!data.updating && !data.update_available && (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-          Установлена последняя версия
-        </div>
-      )}
-
-      {isAdmin && (
-        <button
-          onClick={() => check.mutate()}
-          disabled={check.isPending || data.updating || isFetching}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          <RefreshCw className={cn("h-4 w-4", check.isPending && "animate-spin")} />
-          {check.isPending
-            ? "Проверяем…"
-            : mode === "manual"
-              ? "Проверить и установить"
-              : "Проверить обновления сейчас"}
-        </button>
-      )}
-
-      {data.note && (
-        <p className="text-xs text-muted-foreground">Статус: {data.note}</p>
-      )}
-    </div>
-  );
-}
-
 /* ---------- Страница ---------- */
 
 export default function SettingsPage() {
@@ -1272,7 +1112,7 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold">
+        <h1 className="flex items-center gap-2 font-display text-lg font-bold">
           <CheckCircle2 className="h-5 w-5" />
           Настройки
         </h1>
