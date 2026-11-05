@@ -35,12 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BikeTrackingPanel } from "@/components/tracking/bike-tracking-panel";
-import {
-  accountLabel,
-  FleetData,
-  formatAgo,
-  TrackerPosition,
-} from "@/components/tracking/tracking-format";
+import { FleetData, formatAgo, TrackerPosition } from "@/components/tracking/tracking-format";
 import { bikesApi, trackingApi, API_URL } from "@/lib/api";
 import { apiErrorMessage, formatCurrency, cn } from "@/lib/utils";
 
@@ -920,11 +915,6 @@ export function ParkingGarage() {
           <Badge variant="secondary">Всего: {bikes.length}</Badge>
           <Badge>Свободно: {bikes.length - rentedCount}</Badge>
           <Badge variant="secondary">В аренде: {rentedCount}</Badge>
-          {fleet && (
-            <Badge variant={accountLabel(fleet.account).tone === "ok" ? "secondary" : "destructive"}>
-              {accountLabel(fleet.account).text}
-            </Badge>
-          )}
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Input

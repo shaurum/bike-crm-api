@@ -171,17 +171,17 @@ export function BikeTrackingPanel({
           <MapPin className="h-4 w-4 text-muted-foreground" aria-hidden />
           Местоположение
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {position && (
-            <Badge variant={position.online ? "default" : "secondary"}>
-              {position.online ? "На связи" : "Нет связи"}
-            </Badge>
-          )}
-          <Badge variant={accountInfo.tone === "ok" ? "secondary" : "destructive"}>
-            {accountInfo.text}
+        {position && (
+          <Badge variant={position.online ? "default" : "secondary"}>
+            {position.online ? "На связи" : "Нет связи"}
           </Badge>
-        </div>
+        )}
       </div>
+
+      {/* Состояние GDEGAZEL видно в статусе системы, здесь — только когда что-то не так */}
+      {account && account.state !== "ok" && (
+        <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800">{accountInfo.text}</p>
+      )}
 
       <div className="space-y-1.5">
         <label className="text-xs font-medium">GPS-трекер</label>

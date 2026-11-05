@@ -305,6 +305,12 @@ export const bikesApi = {
   branches: () => api.get("/bikes/branches/list"),
 };
 
+export const runtimeSettingsApi = {
+  get: () => api.get("/settings/runtime"),
+  update: (payload: { values?: Record<string, string>; clear?: string[] }) =>
+    api.patch("/settings/runtime", payload),
+};
+
 export const trackingApi = {
   fleet: () => api.get("/tracking/fleet"),
   trackers: () => api.get("/tracking/trackers"),

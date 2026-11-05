@@ -21,9 +21,10 @@ import { api, systemApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { apiErrorMessage, cn } from "@/lib/utils";
 
+import KeysTab from "./keys-tab";
 import UsersTab from "./users-tab";
 
-type TabKey = "general" | "account" | "users" | "integrations" | "update";
+type TabKey = "general" | "account" | "users" | "integrations" | "keys" | "update";
 
 const TABS: {
   key: TabKey;
@@ -35,6 +36,7 @@ const TABS: {
   { key: "account", label: "Аккаунт", icon: UserRound },
   { key: "users", label: "Пользователи", icon: ShieldCheck, adminOnly: true },
   { key: "integrations", label: "Интеграции", icon: Plug },
+  { key: "keys", label: "Ключи и токены", icon: KeyRound, adminOnly: true },
   { key: "update", label: "Обновление", icon: RefreshCw },
 ];
 
@@ -1257,6 +1259,7 @@ export default function SettingsPage() {
       wanted === "account" ||
       wanted === "users" ||
       wanted === "integrations" ||
+      wanted === "keys" ||
       wanted === "update"
     ) {
       setTab(wanted);
@@ -1304,6 +1307,7 @@ export default function SettingsPage() {
         {activeTab === "account" && <AccountTab />}
         {activeTab === "users" && <UsersTab />}
         {activeTab === "integrations" && <IntegrationsTab />}
+        {activeTab === "keys" && <KeysTab />}
         {activeTab === "update" && <UpdateTab />}
       </div>
     </div>

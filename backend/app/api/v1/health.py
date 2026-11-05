@@ -24,7 +24,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 CACHE_TTL = 10.0
 _cache: Dict[str, Any] = {"at": 0.0, "data": None}
 
-SERVICE_KEYS = ("postgres", "redis", "celery", "gateway", "avito", "telegram", "email")
+SERVICE_KEYS = ("postgres", "redis", "celery", "gateway", "avito", "telegram", "email", "gdegazel")
 
 
 def _now() -> str:
@@ -148,6 +148,29 @@ async def _check_email(db: AsyncSession) -> dict:
     return {"status": "ok", "detail": mail.provider}
 
 
+async def _check_gdegazel() -> dict:
+    from app.services import gdegazel
+
+    if not gdegazel.is_configured():
+        return {"status": "off", "detail": "токен не задан"}
+    try:
+        trackers = await gdegazel.trackers_status()
+    except gdegazel.GdegazelError as exc:
+        state = exc.account_state
+        if state == gdegazel.ACCOUNT_PAYMENT_REQUIRED:
+            return {"status": "down", "detail": "нужно пополнить баланс GDEGAZEL"}
+        if state == gdegazel.ACCOUNT_INVALID_TOKEN:
+            return {"status": "down", "detail": "неверный токен"}
+        return {"status": "down", "detail": str(exc)[:160]}
+
+    online = sum(1 for t in trackers if gdegazel.to_position(t)["online"])
+    # Суммы баланса API не отдаёт: «доступ активен» значит, что оплата не просрочена
+    return {
+        "status": "ok",
+        "detail": f"доступ активен, на связи {online} из {len(trackers)} трекеров",
+    }
+
+
 async def _last_ok_map() -> Dict[str, Optional[str]]:
     """Когда сервис最后一次 был ok (хранится в redis, переживает рестарты)."""
     try:
@@ -194,6 +217,7 @@ LABELS = {
     "avito": "Авито",
     "telegram": "Telegram-бот",
     "email": "Почта (SMTP)",
+    "gdegazel": "GPS-трекеры (GDEGAZEL)",
 }
 
 
@@ -221,12 +245,13 @@ async def services_health(
     if _cache["data"] and now - _cache["at"] < CACHE_TTL:
         return _cache["data"]
 
-    (pg, rd, celery_res, (gw, gw_status), email) = await asyncio.gather(
+    (pg, rd, celery_res, (gw, gw_status), email, trackers) = await asyncio.gather(
         _check_postgres(db),
         _check_redis(),
         _check_celery(),
         _check_gateway(),
         _check_email(db),
+        _check_gdegazel(),
     )
 
     checks = {
@@ -237,6 +262,7 @@ async def services_health(
         "avito": _check_avito(gw_status),
         "telegram": _check_telegram(gw_status),
         "email": email,
+        "gdegazel": trackers,
     }
 
     await _touch_last_ok([k for k, v in checks.items() if v["status"] == "ok"])

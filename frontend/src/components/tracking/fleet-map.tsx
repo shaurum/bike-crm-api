@@ -124,7 +124,6 @@ export function FleetMap() {
       b.position?.shock_alarm ||
       (b.position?.tracker_battery != null && b.position.tracker_battery < LOW_TRACKER_BATTERY)
   );
-  const account = accountLabel(data?.account ?? null);
 
   return (
     <div className="space-y-4">
@@ -133,11 +132,6 @@ export function FleetMap() {
           <Badge variant="secondary">Всего: {bikes.length}</Badge>
           <Badge>На связи: {onlineCount}</Badge>
           <Badge variant="secondary">Без трекера: {noTrackerCount}</Badge>
-          {data && (
-            <Badge variant={account.tone === "ok" ? "secondary" : "destructive"}>
-              {account.text}
-            </Badge>
-          )}
         </div>
         <Button variant="outline" size="sm" onClick={load}>
           <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
@@ -146,8 +140,12 @@ export function FleetMap() {
       </div>
 
       {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {data?.account.state !== "ok" && data?.account.message && (
-        <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">{data.account.message}</p>
+      {/* Состояние GDEGAZEL живёт в статусе системы; здесь только объяснение, почему карта пустая */}
+      {data && data.account.state !== "ok" && (
+        <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          {accountLabel(data.account).text}
+          {data.account.message ? `: ${data.account.message}` : ""}
+        </p>
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">

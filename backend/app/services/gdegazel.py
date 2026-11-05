@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import math
-import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
+
+from app.services import runtime_settings
 
 API_URL = "https://gdegazel.ru/gps/yii_main.php"
 TIMEOUT = 20.0
@@ -31,7 +32,7 @@ ACCOUNT_UNAVAILABLE = "unavailable"
 _ACCOUNT_BY_STATUS = {401: ACCOUNT_INVALID_TOKEN, 402: ACCOUNT_PAYMENT_REQUIRED}
 
 _MESSAGES = {
-    401: "GDEGAZEL отклонил токен: проверьте GDEGAZEL_API_TOKEN",
+    401: "GDEGAZEL отклонил токен: проверьте его в Настройки → Ключи и токены",
     402: "GDEGAZEL требует оплату: баланс отрицательный больше 7 дней",
     403: "GDEGAZEL: нет разрешения на операцию",
     404: "GDEGAZEL: трекер не найден у этого пользователя",
@@ -56,7 +57,7 @@ class GdegazelError(Exception):
 
 
 def api_token() -> str:
-    return os.environ.get("GDEGAZEL_API_TOKEN", "").strip()
+    return runtime_settings.get("GDEGAZEL_API_TOKEN")
 
 
 def is_configured() -> bool:
@@ -70,7 +71,7 @@ def reset_cache() -> None:
 
 async def _request(route: str, params: Optional[dict] = None) -> Any:
     if not is_configured():
-        raise GdegazelError("GDEGAZEL не настроен: задайте GDEGAZEL_API_TOKEN")
+        raise GdegazelError("GDEGAZEL не настроен: укажите токен в Настройки → Ключи и токены")
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
