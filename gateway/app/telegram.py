@@ -112,16 +112,51 @@ def _target_chat(chat_id: str) -> str:
     return target
 
 
-_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+# Расширение файла → (метод Bot API, ключ поля с файлом)
+_MEDIA_METHODS: dict[str, tuple[str, str]] = {
+    ".jpg": ("sendPhoto", "photo"),
+    ".jpeg": ("sendPhoto", "photo"),
+    ".png": ("sendPhoto", "photo"),
+    ".webp": ("sendPhoto", "photo"),
+    ".gif": ("sendAnimation", "animation"),
+    ".ogg": ("sendVoice", "voice"),
+    ".oga": ("sendVoice", "voice"),
+    ".opus": ("sendVoice", "voice"),
+    ".mp3": ("sendAudio", "audio"),
+    ".m4a": ("sendAudio", "audio"),
+    ".mp4": ("sendVideo", "video"),
+    ".mov": ("sendVideo", "video"),
+}
+_DOCUMENT = ("sendDocument", "document")
+CAPTION_LIMIT = 1024
 
 
-async def send_media(chat_id: str, url: str) -> str:
-    """Отправка картинки/документа по URL (Telegram скачает файл сам)."""
-    clean = url.split("?")[0].lower()
-    is_image = clean.endswith(_IMAGE_EXTS)
-    method = "sendPhoto" if is_image else "sendDocument"
-    key = "photo" if is_image else "document"
-    result = await call(method, chat_id=_target_chat(chat_id), **{key: url})
+def _media_method(url: str) -> tuple[str, str]:
+    """Метод Bot API по расширению URL (без query и фрагмента)."""
+    clean = url.split("?")[0].split("#")[0].lower()
+    return _MEDIA_METHODS.get(os.path.splitext(clean)[1], _DOCUMENT)
+
+
+async def send_media(chat_id: str, url: str, caption: Optional[str] = None) -> str:
+    """Отправка файла по URL (Telegram скачает его сам) подходящим методом.
+
+    Если Telegram отклонил файл не как документ (неподходящий формат для
+    фото/голосового/видео) — один повтор через sendDocument.
+    """
+    target = _target_chat(chat_id)
+    extra: dict[str, Any] = {}
+    if caption:
+        extra["caption"] = caption[:CAPTION_LIMIT]
+
+    method, key = _media_method(url)
+    try:
+        result = await call(method, chat_id=target, **{key: url}, **extra)
+    except TelegramError:
+        if method == _DOCUMENT[0]:
+            raise
+        result = await call(
+            _DOCUMENT[0], chat_id=target, **{_DOCUMENT[1]: url}, **extra
+        )
     if isinstance(result, dict) and result.get("message_id") is not None:
         return str(result["message_id"])
     return ""

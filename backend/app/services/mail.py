@@ -5,12 +5,13 @@
 чтобы рабочее окружение не ломалось.
 """
 
+import base64
 import logging
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import httpx
 from sqlalchemy import select
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 class MailError(Exception):
     """Не удалось отправить письмо."""
+
+
+# Вложение письма: (имя файла, данные, content-type)
+MailAttachment = Tuple[str, bytes, str]
 
 
 @dataclass
@@ -99,7 +104,13 @@ async def get_mail_settings(db: AsyncSession) -> MailSettings:
     )
 
 
-async def _send_via_resend(mail: MailSettings, to: str, subject: str, text: str) -> None:
+async def _send_via_resend(
+    mail: MailSettings,
+    to: str,
+    subject: str,
+    text: str,
+    attachments: Optional[List[MailAttachment]] = None,
+) -> None:
     """Отправка через API Resend."""
     payload = {
         "from": formataddr((mail.from_name, mail.from_email)) if mail.from_name else mail.from_email,
@@ -107,6 +118,11 @@ async def _send_via_resend(mail: MailSettings, to: str, subject: str, text: str)
         "subject": subject,
         "text": text,
     }
+    if attachments:
+        payload["attachments"] = [
+            {"filename": name, "content": base64.b64encode(data).decode("ascii")}
+            for name, data, _ in attachments
+        ]
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
@@ -119,7 +135,13 @@ async def _send_via_resend(mail: MailSettings, to: str, subject: str, text: str)
         raise MailError(f"Resend вернул ошибку: {exc}") from exc
 
 
-async def _send_via_smtp(mail: MailSettings, to: str, subject: str, text: str) -> None:
+async def _send_via_smtp(
+    mail: MailSettings,
+    to: str,
+    subject: str,
+    text: str,
+    attachments: Optional[List[MailAttachment]] = None,
+) -> None:
     """Отправка через SMTP с поддержкой STARTTLS и SSL."""
     message = EmailMessage()
     message["Subject"] = subject
@@ -128,6 +150,11 @@ async def _send_via_smtp(mail: MailSettings, to: str, subject: str, text: str) -
     )
     message["To"] = to
     message.set_content(text)
+    for name, data, content_type in attachments or []:
+        maintype, _, subtype = (content_type or "").partition("/")
+        if not maintype or not subtype:
+            maintype, subtype = "application", "octet-stream"
+        message.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
 
     port = mail.port
     use_ssl = port == 465
@@ -154,8 +181,12 @@ async def send_email(
     subject: str,
     text: str,
     mail: Optional[MailSettings] = None,
+    attachments: Optional[List[MailAttachment]] = None,
 ) -> None:
-    """Отправляет письмо, выбирая транспорт по настройкам."""
+    """Отправляет письмо, выбирая транспорт по настройкам.
+
+    attachments — список (имя, данные, тип) для прикладывания к письму.
+    """
     mail = mail or await get_mail_settings(db)
 
     if not mail.is_ready():
@@ -164,9 +195,9 @@ async def send_email(
         )
 
     if mail.provider == "resend":
-        await _send_via_resend(mail, to, subject, text)
+        await _send_via_resend(mail, to, subject, text, attachments)
     else:
-        await _send_via_smtp(mail, to, subject, text)
+        await _send_via_smtp(mail, to, subject, text, attachments)
 
     logger.info("Письмо отправлено на %s через %s", to, mail.provider)
 

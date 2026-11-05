@@ -10,7 +10,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useAuthStore } from "@/lib/store";
 import { authApi } from "@/lib/api";
 import { Toaster } from "@/components/ui/toaster";
-import { Bike } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,10 +43,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Bike className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <CardTitle>Вход в Bike CRM</CardTitle>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.png" alt="ВЖУХ И ПОЕХАЛИ" className="mx-auto mb-4 h-14 w-auto" />
+          <CardTitle>Вход в ВЖУХ CRM</CardTitle>
           <CardDescription>Управление прокатом электробайков</CardDescription>
         </CardHeader>
         <CardContent>

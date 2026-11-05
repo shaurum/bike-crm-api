@@ -5,12 +5,17 @@ import {
   Archive,
   ArrowLeft,
   CheckCheck,
+  FileText,
+  Film,
   Lock,
+  Mic,
+  Music,
   Paperclip,
   Plus,
   RotateCw,
   Search,
   Send,
+  Square,
   Trash2,
   Unlock,
   User,
@@ -21,6 +26,7 @@ import { toast } from "@/hooks/use-toast";
 
 import { ChannelIcon } from "@/components/channel-icon";
 import { CannedRepliesMenu } from "@/components/canned-replies";
+import { Button } from "@/components/ui/button";
 import { API_URL, api } from "@/lib/api";
 import { apiErrorMessage, cn } from "@/lib/utils";
 
@@ -53,6 +59,66 @@ interface MessageAttachment {
   url: string;
   name?: string | null;
   content_type?: string | null;
+  size?: number | null;
+}
+
+type AttachmentKind = "image" | "audio" | "video" | "document";
+
+/** Вид вложения для ленты: по content_type, затем по расширению имени/ссылки. */
+function attachmentKind(att: MessageAttachment): AttachmentKind {
+  const type = (att.content_type || "").split(";")[0].trim().toLowerCase();
+  const ext = (att.name || att.url)
+    .split("?")[0]
+    .match(/\.([a-z0-9]+)$/i)?.[1]
+    ?.toLowerCase();
+  // audio/webm — запись с микрофона; расширение .webm само по себе не решает
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("audio/")) return "audio";
+  if (type.startsWith("video/")) return "video";
+  if (ext && ["jpg", "jpeg", "png", "webp", "gif", "avif"].includes(ext))
+    return "image";
+  if (ext && ["ogg", "oga", "opus", "mp3", "m4a"].includes(ext)) return "audio";
+  if (ext && ["mp4", "mov"].includes(ext)) return "video";
+  return "document";
+}
+
+function formatFileSize(size?: number | null): string {
+  if (!size || size <= 0) return "";
+  if (size < 1024) return `${size} Б`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`;
+  return `${(size / 1024 / 1024).toFixed(1)} МБ`;
+}
+
+/** Лимит записи голосового, секунд. */
+const MAX_VOICE_SECONDS = 300;
+
+/** Форматы записи в порядке предпочтения: Telegram нативно принимает OGG/Opus. */
+const VOICE_MIME_CANDIDATES = [
+  "audio/ogg;codecs=opus",
+  "audio/webm;codecs=opus",
+  "audio/mp4",
+];
+
+function pickVoiceMime(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  return VOICE_MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function voiceExtension(mime: string): string {
+  const base = mime.split(";")[0].trim().toLowerCase();
+  if (base === "audio/ogg") return "ogg";
+  if (base === "audio/mp4") return "m4a";
+  return "webm";
+}
+
+function formatTimer(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function attachmentHref(att: MessageAttachment): string {
+  return /^https?:\/\//.test(att.url) ? att.url : `${API_URL}${att.url}`;
 }
 
 interface MessageItem {
@@ -216,7 +282,7 @@ function ConversationList({
             selectedId === item.id
               ? "border-primary bg-muted"
               : item.unread_count > 0
-                ? "border-primary bg-primary/5"
+                ? "border-primary bg-brand-soft"
                 : "border-transparent"
           )}
         >
@@ -345,7 +411,7 @@ function ContactsPanel({
         </p>
         <button
           onClick={() => setAdding((v) => !v)}
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-foreground underline-offset-2 hover:underline"
         >
           <Plus className="h-3 w-3" />
           Добавить
@@ -455,14 +521,28 @@ function Thread({
   const [channel, setChannel] = useState<string>("");
   const [pendingFiles, setPendingFiles] = useState<MessageAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
 
-  const uploadFiles = async (files: FileList | null) => {
+  // Запись голосового
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const discardRef = useRef(false);
+
+  const uploadFiles = async (
+    files: FileList | File[] | null,
+    options?: { voice?: boolean }
+  ) => {
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
         const form = new FormData();
         form.append("file", file);
+        if (options?.voice) form.append("voice", "1");
         const { data } = await api.post<MessageAttachment>(
           `/conversations/${conversation.id}/attachments`,
           form,
@@ -472,13 +552,148 @@ function Thread({
       }
     } catch (error) {
       toast({
-        title: "Не удалось загрузить файл",
+        title: options?.voice
+          ? "Не удалось загрузить запись"
+          : "Не удалось загрузить файл",
         description: apiErrorMessage(error, "Ошибка загрузки"),
       });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const releaseMic = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  };
+
+  /** Остановить запись; discard — выбросить результат (отмена, смена диалога). */
+  const finishRecording = (discard: boolean) => {
+    discardRef.current = discard;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop(); // освобождение микрофона — в onstop
+    } else {
+      releaseMic();
+      recorderRef.current = null;
+      setRecording(false);
+    }
+  };
+
+  const micDenied = () =>
+    toast({
+      title: "Нет доступа к микрофону",
+      description:
+        "Разрешите доступ к микрофону в настройках браузера (значок замка у адреса) и повторите. Запись работает только по https или на localhost.",
+    });
+
+  const startRecording = async () => {
+    if (recording || uploading) return;
+    if (
+      typeof window === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      micDenied();
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      micDenied();
+      return;
+    }
+    const mime = pickVoiceMime();
+    let recorder: MediaRecorder;
+    try {
+      recorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+    } catch {
+      stream.getTracks().forEach((track) => track.stop());
+      toast({
+        title: "Запись не поддерживается",
+        description: "Этот браузер не умеет записывать звук. Прикрепите файл вручную.",
+      });
+      return;
+    }
+
+    const chunks: Blob[] = [];
+    discardRef.current = false;
+    streamRef.current = stream;
+    recorderRef.current = recorder;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onstop = () => {
+      const discard = discardRef.current;
+      releaseMic();
+      recorderRef.current = null;
+      setRecording(false);
+      if (discard) return;
+      const type = recorder.mimeType || mime || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      if (blob.size === 0) {
+        toast({ title: "Запись пустая", description: "Попробуйте записать ещё раз." });
+        return;
+      }
+      const file = new File([blob], `voice.${voiceExtension(type)}`, { type });
+      void uploadFiles([file], { voice: true });
+    };
+
+    const startedAt = Date.now();
+    setRecSeconds(0);
+    setRecording(true);
+    recorder.start();
+    timerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      setRecSeconds(Math.min(elapsed, MAX_VOICE_SECONDS));
+      if (elapsed >= MAX_VOICE_SECONDS) finishRecording(false);
+    }, 500);
+  };
+
+  const hasFiles = (event: React.DragEvent) =>
+    Array.from(event.dataTransfer?.types || []).includes("Files");
+
+  const dropHandlers = {
+    onDragEnter: (event: React.DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepth.current += 1;
+      setDragging(true);
+    },
+    onDragOver: (event: React.DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    onDragLeave: (event: React.DragEvent) => {
+      if (!hasFiles(event)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragging(false);
+    },
+    onDrop: (event: React.DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      void uploadFiles(Array.from(event.dataTransfer.files));
+    },
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const files = Array.from(event.clipboardData?.files || []);
+    // Обычную вставку текста не трогаем: перехватываем, только если в буфере файл без текста
+    if (files.length === 0 || event.clipboardData.getData("text/plain")) return;
+    event.preventDefault();
+    void uploadFiles(files);
   };
 
   const sendable = useMemo(() => {
@@ -508,6 +723,11 @@ function Thread({
     setChannel("");
     setText("");
     setPendingFiles([]);
+    setDragging(false);
+    dragDepth.current = 0;
+    // Смена диалога и размонтирование: запись выбрасываем, микрофон освобождаем
+    return () => finishRecording(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
 
   useEffect(() => {
@@ -529,7 +749,12 @@ function Thread({
         {
           channel,
           content: text,
-          attachments: pendingFiles.map((f) => f.url),
+          attachments: pendingFiles.map((f) => ({
+            url: f.url,
+            name: f.name,
+            content_type: f.content_type,
+            size: f.size,
+          })),
         }
       );
       return data;
@@ -557,7 +782,13 @@ function Thread({
     !uploading;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col transition-colors",
+        dragging && "bg-brand-soft/40 ring-2 ring-inset ring-primary"
+      )}
+      {...dropHandlers}
+    >
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {conversation.messages.length === 0 && (
           <p className="text-center text-sm text-muted-foreground">
@@ -575,10 +806,10 @@ function Thread({
           return (
             <Fragment key={message.id}>
               {unread && !prevUnread && (
-                <div className="flex items-center gap-2 text-[11px] font-medium text-primary">
-                  <span className="h-px flex-1 bg-primary/30" />
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
+                  <span className="h-px flex-1 bg-primary" />
                   <span>Новые сообщения</span>
-                  <span className="h-px flex-1 bg-primary/30" />
+                  <span className="h-px flex-1 bg-primary" />
                 </div>
               )}
               <div
@@ -591,9 +822,9 @@ function Thread({
                   className={cn(
                     "max-w-[80%] rounded-lg px-3 py-2",
                     outbound
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-brand-soft text-foreground"
                       : unread
-                        ? "bg-background ring-2 ring-primary/40"
+                        ? "bg-background ring-2 ring-primary"
                         : "bg-muted"
                   )}
                 >
@@ -615,13 +846,46 @@ function Thread({
                       )}
                     >
                       {(message.attachments || []).map((attachment) => {
-                        const isImage =
-                          (attachment.content_type || "").startsWith("image/") ||
-                          /\.(jpe?g|png|webp|gif|avif)$/i.test(attachment.url);
+                        const kind = attachmentKind(attachment);
                         const href = /^https?:\/\//.test(attachment.url)
                           ? attachment.url
                           : `${API_URL}${attachment.url}`;
-                        if (isImage) {
+                        if (kind === "audio") {
+                          return (
+                            <div key={attachment.url} className="space-y-0.5">
+                              <audio
+                                controls
+                                preload="none"
+                                src={href}
+                                className="w-[260px] max-w-full"
+                              />
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                download={attachment.name || undefined}
+                                className="block max-w-[260px] truncate text-[11px] underline underline-offset-2 opacity-80 hover:opacity-100"
+                                title={attachment.name || "Скачать"}
+                              >
+                                {attachment.name
+                                  ? `${attachment.name} — скачать`
+                                  : "скачать"}
+                              </a>
+                            </div>
+                          );
+                        }
+                        if (kind === "video") {
+                          return (
+                            <video
+                              key={attachment.url}
+                              controls
+                              preload="metadata"
+                              src={href}
+                              className="max-h-60 max-w-full rounded-md"
+                            />
+                          );
+                        }
+                        if (kind === "image") {
                           return (
                             <a
                               key={attachment.url}
@@ -652,6 +916,11 @@ function Thread({
                             <span className="truncate">
                               {attachment.name || "Вложение"}
                             </span>
+                            {formatFileSize(attachment.size) && (
+                              <span className="shrink-0 opacity-70">
+                                {formatFileSize(attachment.size)}
+                              </span>
+                            )}
                           </a>
                         );
                       })}
@@ -699,27 +968,57 @@ function Thread({
         />
         {pendingFiles.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {pendingFiles.map((file, index) => (
-              <span
-                key={file.url}
-                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border bg-muted px-2 py-1 text-xs"
-              >
-                <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <span className="truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPendingFiles((prev) =>
-                      prev.filter((_, idx) => idx !== index)
-                    )
-                  }
-                  title="Убрать файл"
-                  className="shrink-0 rounded text-muted-foreground hover:text-red-600"
+            {pendingFiles.map((file, index) => {
+              const kind = attachmentKind(file);
+              const href = attachmentHref(file);
+              const KindIcon =
+                kind === "audio" ? Music : kind === "video" ? Film : FileText;
+              return (
+                <span
+                  key={file.url}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted px-2 py-1 text-xs"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+                  {kind === "image" ? (
+                    <img
+                      src={href}
+                      alt={file.name || "изображение"}
+                      className="h-10 w-10 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <KindIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  {kind === "audio" ? (
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={href}
+                      className="h-8 w-[200px] max-w-full"
+                    />
+                  ) : (
+                    <span className="flex min-w-0 max-w-[12rem] flex-col leading-tight">
+                      <span className="truncate">{file.name || "Файл"}</span>
+                      {formatFileSize(file.size) && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatFileSize(file.size)}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingFiles((prev) =>
+                        prev.filter((_, idx) => idx !== index)
+                      )
+                    }
+                    title="Убрать файл"
+                    className="shrink-0 rounded text-muted-foreground hover:text-red-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
         {uploading && (
@@ -741,40 +1040,100 @@ function Thread({
               </option>
             ))}
           </select>
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              pendingFiles.length > 0
-                ? "Подпись к вложению…"
-                : "Написать сообщение…"
-            }
-            className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            title="Прикрепить файл"
-            className="flex shrink-0 items-center justify-center rounded-md border bg-background px-2.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-          <CannedRepliesMenu
-            onPick={(canned) =>
-              setText((prev) => (prev ? `${prev}\n${canned}` : canned))
-            }
-          />
-          <button
-            type="submit"
-            disabled={!canSend}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:bg-muted"
-            title="Отправить"
-          >
-            <Send className="h-4 w-4" />
-            Ответить
-          </button>
+          {recording ? (
+            <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md border bg-background px-3 py-1.5">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+              </span>
+              <span className="font-mono text-sm tabular-nums">
+                {formatTimer(recSeconds)}
+              </span>
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                Идёт запись (до {MAX_VOICE_SECONDS / 60} мин)
+              </span>
+              <div className="ml-auto flex gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => finishRecording(true)}
+                >
+                  <X className="mr-1 h-4 w-4" />
+                  Отмена
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => finishRecording(false)}
+                >
+                  <Square className="mr-1 h-3.5 w-3.5" />
+                  Стоп
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onPaste={handlePaste}
+                placeholder={
+                  pendingFiles.length > 0
+                    ? "Подпись к вложению…"
+                    : "Написать сообщение…"
+                }
+                className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Прикрепить файл"
+                className="flex shrink-0 items-center justify-center rounded-md border bg-background px-2.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+              {channel === "telegram" && (
+                <button
+                  type="button"
+                  onClick={() => void startRecording()}
+                  disabled={uploading}
+                  title="Записать голосовое"
+                  className="flex shrink-0 items-center justify-center rounded-md border bg-background px-2.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              )}
+              <CannedRepliesMenu
+                onPick={(canned) =>
+                  setText((prev) => (prev ? `${prev}\n${canned}` : canned))
+                }
+              />
+              <button
+                type="submit"
+                disabled={!canSend}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:bg-muted"
+                title="Отправить"
+              >
+                <Send className="h-4 w-4" />
+                Ответить
+              </button>
+            </>
+          )}
         </div>
+        {pendingFiles.length > 0 && channel === "avito" && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            В Авито файлы уходят ссылками
+          </p>
+        )}
+        {pendingFiles.length > 0 && channel === "email" && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Файлы приложатся к письму
+          </p>
+        )}
         {sendable.length === 0 && hiddenByChannel.size > 0 && (
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             Отправлять можно в почту, Telegram, ВКонтакте и Авито — по
@@ -1044,7 +1403,7 @@ export default function MessagesPage() {
                   {conversation.lead_id && (
                     <a
                       href={`/orders?lead=${conversation.lead_id}`}
-                      className="text-primary hover:underline"
+                      className="font-semibold text-foreground underline underline-offset-2 hover:text-foreground/80"
                     >
                       Открыть сделку
                     </a>

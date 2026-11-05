@@ -23,13 +23,13 @@ export function PagePlaceholder({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="font-display text-xl font-bold tracking-tight">{title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
 
       <Card>
         <CardHeader className="flex-row items-center gap-3 space-y-0">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-foreground">
             <Icon className="h-5 w-5" aria-hidden />
           </span>
           <div>

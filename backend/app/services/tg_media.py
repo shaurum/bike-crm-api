@@ -9,6 +9,7 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
+from app.services.attachments import mask_token, normalize_content_type
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,12 @@ async def save_tg_file(
     file_id: str,
     *,
     name: Optional[str] = None,
+    kind: Optional[str] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Optional[dict]:
     """getFile → скачивание → сохранение в uploads/messages.
 
+    kind — вид медиа Telegram (photo/document/voice/...), если известен.
     Возвращает {url, name, content_type} или None при ошибке.
     """
     owns_client = client is None
@@ -67,7 +70,7 @@ async def save_tg_file(
         )
         file_resp.raise_for_status()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Telegram: файл %s не скачан: %s", file_id, exc)
+        logger.warning("Telegram: файл %s не скачан: %s", file_id, mask_token(exc))
         return None
     finally:
         if owns_client:
@@ -77,12 +80,24 @@ async def save_tg_file(
         file_resp.headers.get("content-type") or ""
     ).split(";")[0].strip() or None
     ext = _safe_ext(file_path, content_type)
+    if kind == "voice" and ext in (".oga", ".bin"):
+        ext = ".ogg"
     if content_type is None:
         content_type = mimetypes.guess_type("x" + ext)[0]
 
-    resolved_name = name or os.path.basename(file_path)
-    if not resolved_name or resolved_name == file_path:
-        resolved_name = f"file-{uuid.uuid4().hex[:8]}{ext}"
+    if kind == "voice" and not name:
+        # у голосовых нет своего имени, basename — служебный file_N.oga
+        resolved_name = "Голосовое.ogg"
+    else:
+        resolved_name = name or os.path.basename(file_path)
+        if not resolved_name or resolved_name == file_path:
+            resolved_name = f"file-{uuid.uuid4().hex[:8]}{ext}"
+
+    if kind == "voice":
+        content_type = "audio/ogg"
+    else:
+        probe = resolved_name if os.path.splitext(resolved_name)[1] else "x" + ext
+        content_type = normalize_content_type(probe, content_type)
 
     filename = f"tg-{uuid.uuid4().hex}{ext}"
     target_dir = os.path.join(settings.UPLOAD_DIR, "messages")
@@ -137,7 +152,9 @@ async def extract_attachments(token: str, message: dict) -> list[dict]:
             name = None
             if item["kind"] == "document" and isinstance(document, dict):
                 name = document.get("file_name")
-            saved = await save_tg_file(token, file_id, name=name, client=client)
+            saved = await save_tg_file(
+                token, file_id, name=name, kind=item.get("kind"), client=client
+            )
             if saved:
                 out.append(saved)
     return out

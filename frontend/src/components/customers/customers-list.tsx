@@ -512,7 +512,7 @@ function ContactPointsSection({
             setDup(null);
             setAdding((v) => !v);
           }}
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-foreground underline underline-offset-2 hover:no-underline"
         >
           <Plus className="h-3 w-3" aria-hidden />
           Добавить

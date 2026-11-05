@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.models import Lead
+from app.services.attachments import mask_token
 from app.services.messaging import DuplicateMessage, ingest_inbound
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,7 @@ async def _process_telegram_webhook(source_id: str, payload: dict):
             await session.commit()
         except Exception as e:
             await session.rollback()
-            logger.exception("Error processing Telegram webhook: %s", e)
+            logger.exception("Error processing Telegram webhook: %s", mask_token(e))
             raise
 
 

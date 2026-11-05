@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi8 \
     shared-mime-info \
     fonts-dejavu-core \
+    ffmpeg \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 

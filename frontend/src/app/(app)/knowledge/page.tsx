@@ -220,7 +220,7 @@ function ArticleDialog({
               onClick={() => setIsPinned(!isPinned)}
               className={cn(
                 "inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm",
-                isPinned && "border-primary bg-primary/10 text-primary"
+                isPinned && "border-primary bg-brand-soft text-foreground"
               )}
               title="Закрепить сверху в списке"
             >
@@ -431,7 +431,7 @@ export default function KnowledgePage() {
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold">
+          <h1 className="flex items-center gap-2 font-display text-lg font-bold">
             <BookOpen className="h-5 w-5" />
             База знаний
           </h1>
@@ -500,13 +500,13 @@ export default function KnowledgePage() {
               key={article.id}
               className={cn(
                 "group flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50",
-                article.is_pinned && "border-primary/40 bg-primary/5"
+                article.is_pinned && "border-primary bg-brand-soft/50"
               )}
               onClick={() => setViewing(article)}
             >
               <div className="min-w-0">
                 <p className="flex items-center gap-1.5 font-medium">
-                  {article.is_pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                  {article.is_pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-foreground" />}
                   {article.title}
                 </p>
                 <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">

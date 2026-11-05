@@ -1,12 +1,15 @@
 """Раздел «Сообщения»: список диалогов, история, отправка."""
 
+import asyncio
+import logging
 import mimetypes
 import os
+import tempfile
 import uuid
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +35,14 @@ from app.schemas.messaging import (
     MessageCreate,
     MessageResponse,
     MessageSendResponse,
+)
+from app.services.attachments import (
+    mask_token,
+    detect_kind,
+    normalize_content_type,
+    public_url,
+    resolve_upload,
+    safe_name,
 )
 from app.services.messaging import normalize_value
 
@@ -69,7 +80,21 @@ ALLOWED_UPLOAD_EXTS = {
     ".ogg",
     ".m4a",
     ".mp4",
+    ".oga",
+    ".opus",
+    ".webm",
+    ".mov",
 }
+
+# Telegram: подпись к файлу не длиннее 1024 символов, фото — до 10 МБ
+TELEGRAM_CAPTION_LIMIT = 1024
+TELEGRAM_PHOTO_LIMIT = 10 * 1024 * 1024
+
+# Почта: больше этого суммарно не прикладываем, отдаём ссылками
+MAIL_ATTACH_LIMIT = 20 * 1024 * 1024
+
+AVITO_TEXT_LIMIT = 1000
+NO_PUBLIC_URL_NOTE = "Вложения не отправлены: в .env не задан PUBLIC_BASE_URL"
 
 
 def _attachment_item(raw) -> Optional[AttachmentItem]:
@@ -84,6 +109,7 @@ def _attachment_item(raw) -> Optional[AttachmentItem]:
             url=url,
             name=raw.get("name"),
             content_type=raw.get("content_type"),
+            size=raw.get("size"),
         )
     return None
 
@@ -396,7 +422,27 @@ async def send_message(
     if not payload.content.strip() and not payload.attachments:
         raise HTTPException(status_code=400, detail="Сообщение не может быть пустым")
 
-    attachments = [{"url": a} for a in payload.attachments]
+    attachments = []
+    for item in payload.attachments:
+        url = item.url.strip()
+        # Только файлы, загруженные через /attachments; ../ и чужие папки отсекаются
+        local = (
+            resolve_upload(url, "messages") if url.startswith("/uploads/messages/") else None
+        )
+        if not local:
+            raise HTTPException(
+                status_code=400,
+                detail="Вложение не найдено, загрузите файл заново",
+            )
+        name = (item.name or "").strip() or os.path.basename(local)
+        attachments.append(
+            {
+                "url": url,
+                "name": name[:255],
+                "content_type": normalize_content_type(name, item.content_type),
+                "size": item.size if item.size is not None else os.path.getsize(local),
+            }
+        )
 
     note = await _deliver(
         db, channel, recipient, payload.content, current_user, conv, attachments=attachments
@@ -444,22 +490,66 @@ async def send_message(
     )
 
 
+VOICE_NATIVE_EXTS = {".ogg", ".oga", ".opus"}
+VOICE_DISPLAY_NAME = "Голосовое.ogg"
+VOICE_FFMPEG_TIMEOUT = 60
+VOICE_ERROR = "Не удалось обработать запись"
+
+
+async def transcode_voice(payload: bytes, ext: str) -> bytes:
+    """Перекодирует запись (webm/mp4/…) в OGG/Opus через ffmpeg; ошибка -> 422."""
+    with tempfile.TemporaryDirectory(prefix="voice-") as tmp:
+        src = os.path.join(tmp, f"in{ext or '.bin'}")
+        dst = os.path.join(tmp, "out.ogg")
+        with open(src, "wb") as fh:
+            fh.write(payload)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", src,
+                "-c:a", "libopus", "-b:a", "32k", "-ac", "1", dst,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        except (FileNotFoundError, OSError):
+            raise HTTPException(status_code=422, detail=VOICE_ERROR)
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=VOICE_FFMPEG_TIMEOUT)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise HTTPException(status_code=422, detail=VOICE_ERROR)
+        if proc.returncode != 0 or not os.path.exists(dst):
+            raise HTTPException(status_code=422, detail=VOICE_ERROR)
+        with open(dst, "rb") as fh:
+            result = fh.read()
+    if not result:
+        raise HTTPException(status_code=422, detail=VOICE_ERROR)
+    return result
+
+
 @router.post("/{conversation_id}/attachments")
 async def upload_attachment(
     conversation_id: UUID,
     file: UploadFile = File(...),
+    voice: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Загрузка вложения для сообщения: файл кладётся в uploads/messages/."""
+    """Загрузка вложения для сообщения: файл кладётся в uploads/messages/.
+
+    voice=1 — запись с микрофона: не-OGG перекодируется ffmpeg в OGG/Opus.
+    """
     await _load_conversation(db, conversation_id)
 
     original = os.path.basename(file.filename or "").strip() or "файл"
     ext = os.path.splitext(original)[1].lower()
-    if ext not in ALLOWED_UPLOAD_EXTS:
-        guess = mimetypes.guess_extension((file.content_type or "").split(";")[0].strip())
-        ext = guess if guess and guess.lower() in ALLOWED_UPLOAD_EXTS else ""
     if not ext:
+        # Расширение по Content-Type угадываем, только если в имени его нет вовсе:
+        # явно запрещённое (virus.exe) подменять нельзя
+        guess = mimetypes.guess_extension((file.content_type or "").split(";")[0].strip())
+        ext = guess.lower() if guess and guess.lower() in ALLOWED_UPLOAD_EXTS else ""
+    if not ext or ext not in ALLOWED_UPLOAD_EXTS:
         raise HTTPException(
             status_code=415,
             detail="Этот формат файла нельзя прикрепить (изображения, PDF, документы, архивы, аудио/видео)",
@@ -472,16 +562,28 @@ async def upload_attachment(
     if len(payload) > max_bytes:
         raise HTTPException(status_code=413, detail=f"Файл больше {settings.MAX_UPLOAD_MB} МБ")
 
-    target_dir = os.path.join(settings.UPLOAD_DIR, "messages")
+    # Файл лежит в своей папке под читаемым латинским именем: так Telegram
+    # и почтовые клиенты показывают понятное имя, а не att-<hex>.pdf
+    folder = f"att-{uuid.uuid4().hex}"
+    if voice:
+        # Голосовое для Telegram: всегда OGG/Opus, имя фиксированное
+        if ext not in VOICE_NATIVE_EXTS:
+            payload = await transcode_voice(payload, ext)
+        filename = "voice.ogg"
+        original = VOICE_DISPLAY_NAME
+        content_type = "audio/ogg"
+    else:
+        filename = safe_name(original, ext)
+        content_type = normalize_content_type(filename, file.content_type)
+    target_dir = os.path.join(settings.UPLOAD_DIR, "messages", folder)
     os.makedirs(target_dir, exist_ok=True)
-    filename = f"att-{uuid.uuid4().hex}{ext}"
     with open(os.path.join(target_dir, filename), "wb") as fh:
         fh.write(payload)
 
     return {
-        "url": f"/uploads/messages/{filename}",
+        "url": f"/uploads/messages/{folder}/{filename}",
         "name": original,
-        "content_type": file.content_type,
+        "content_type": content_type,
         "size": len(payload),
     }
 
@@ -502,12 +604,36 @@ async def _deliver(
     if channel == "email":
         from app.services.mail import MailError, send_email
 
-        # Почта не умеет наше вложение напрямую — отдаём ссылками
         body = content
-        if urls:
-            body = (body + "\n\nВложения:\n" + "\n".join(urls)).strip()
+        mail_files: List[tuple] = []
+        if attachments:
+            # Файлы прикладываем к письму; если их слишком много — отдаём ссылками
+            local_files = [
+                (a, resolve_upload(str(a.get("url") or ""))) for a in attachments
+            ]
+            local_files = [(a, path) for a, path in local_files if path]
+            total = sum(os.path.getsize(path) for _, path in local_files)
+            if total > MAIL_ATTACH_LIMIT:
+                lines = []
+                for a, path in local_files:
+                    link = public_url(str(a.get("url") or ""))
+                    if not link:
+                        return "Вложения слишком большие для письма и не отправлены"
+                    lines.append(f"{a.get('name') or os.path.basename(path)}: {link}")
+                body = (body + "\n\nВложения:\n" + "\n".join(lines)).strip()
+            else:
+                for a, path in local_files:
+                    name = str(a.get("name") or os.path.basename(path))
+                    with open(path, "rb") as fh:
+                        data = fh.read()
+                    mail_files.append(
+                        (name, data, normalize_content_type(name, a.get("content_type")))
+                    )
+                body = body.strip() or "Файлы во вложении"
         try:
-            await send_email(db, recipient.value, "Ответ из CRM", body)
+            await send_email(
+                db, recipient.value, "Ответ из CRM", body, attachments=mail_files or None
+            )
             return None
         except MailError as exc:
             logger_warning(str(exc))
@@ -549,17 +675,16 @@ async def _deliver(
             if recipient.external_id != address:
                 recipient.external_id = address
             # Шлюз забирает файлы по полным ссылкам: путь /uploads/... ему недоступен
-            media = _public_media_urls(urls)
-            if urls and not media and not content.strip():
-                return "Вложение не отправлено: в .env не задан PUBLIC_BASE_URL"
+            media = [p for p in (public_url(u) for u in urls) if p]
+            if urls and len(media) < len(urls):
+                # Текст без файла не шлём, чтобы менеджер не думал, что ушло всё
+                return NO_PUBLIC_URL_NOTE
             # Текст обязателен для очереди шлюза: без подписи шлём «Вложение»
             out_text = content.strip() or "Вложение"
             try:
                 await gateway.enqueue_outbound(
                     address, out_text, source="telegram", media=media or None
                 )
-                if urls and not media:
-                    return "Текст отправлен, вложение нет: в .env не задан PUBLIC_BASE_URL"
                 return None
             except gateway.GatewayError as exc:
                 return f"Шлюз не принял сообщение: {exc}"
@@ -580,14 +705,28 @@ async def _deliver(
         if address and not address.lstrip("-").isdigit():
             address = "@" + address.lstrip("@")
         try:
-            if content.strip():
-                await _send_telegram(token, address, content)
-            if attachments:
-                await _send_telegram_files(token, address, attachments)
+            text = content.strip()
+            # Один файл и короткий текст уходят одним запросом: текст — подписью
+            as_caption = (
+                len(attachments) == 1
+                and bool(text)
+                and len(content) <= TELEGRAM_CAPTION_LIMIT
+            )
+            sent = 0
+            if as_caption:
+                sent = await _send_telegram_files(
+                    token, address, attachments, caption=content
+                )
+            if not sent:
+                # Подписью не ушло (или вложений несколько) — текст, затем файлы
+                if text:
+                    await _send_telegram(token, address, content)
+                if attachments and not as_caption:
+                    await _send_telegram_files(token, address, attachments)
             return None
-        except Exception as exc:  # noqa: BLE001
-            logger_warning(str(exc))
-            low = str(exc).lower()
+        except TelegramSendError as exc:
+            logger_warning(f"Telegram: {exc.description}")
+            low = exc.description.lower()
             if (
                 "chat not found" in low
                 or "bot can't initiate" in low
@@ -599,7 +738,13 @@ async def _deliver(
                     "чат с ботом. Попросите его отправить боту любое сообщение "
                     "(/start) и повторите отправку"
                 )
-            return f"Telegram не отправил сообщение: {exc}"
+            return f"Telegram не отправил сообщение: {exc.description}"
+        except Exception as exc:  # noqa: BLE001
+            # Страховка: в тексте исключения может оказаться URL с токеном
+            logging.getLogger(__name__).error(
+                "Telegram: внутренняя ошибка отправки: %s", mask_token(exc)
+            )
+            return "Telegram не отправил сообщение: внутренняя ошибка"
 
     if channel == "avito":
         from app.services import gateway
@@ -610,17 +755,33 @@ async def _deliver(
                 "дождитесь входящего сообщения в этом чате, чтобы ответить"
             )
 
-        # В Авито вложения уходят ссылками в тексте
+        # API Авито в нашей интеграции умеет только текст: вложения — полными ссылками.
+        # В шлюз media не передаём, иначе он припишет ссылки второй раз
         out_text = content
-        if urls:
-            out_text = (content + ("\n\n" if content.strip() else "") + "\n".join(urls)).strip()
+        if attachments:
+            lines = []
+            for a in attachments:
+                link = public_url(str(a.get("url") or ""))
+                if not link:
+                    return NO_PUBLIC_URL_NOTE
+                lines.append(f"{a.get('name') or os.path.basename(link)}: {link}")
+            links = "\n".join(lines)
+            if len(links) > AVITO_TEXT_LIMIT:
+                return (
+                    "Слишком много вложений для Авито — отправьте их "
+                    "несколькими сообщениями"
+                )
+            body = content.strip()
+            # Авито режет текст по лимиту с конца: ссылки должны уместиться целиком
+            room = AVITO_TEXT_LIMIT - len(links) - 2
+            if len(body) > room:
+                body = (body[: room - 1].rstrip() + "…") if room > 1 else ""
+            out_text = (body + "\n\n" if body else "") + links
         out_text = out_text or "Вложение"
 
         if gateway.is_configured():
             try:
-                await gateway.enqueue_outbound(
-                    str(recipient.external_id), out_text, media=urls or None
-                )
+                await gateway.enqueue_outbound(str(recipient.external_id), out_text)
                 return None
             except gateway.GatewayError as exc:
                 return f"Шлюз не принял сообщение: {exc}"
@@ -665,72 +826,112 @@ async def _integration_token(db: AsyncSession, name: str) -> Optional[str]:
     return (item.secret or {}).get("bot_token")
 
 
+class TelegramSendError(Exception):
+    """Ошибка Bot API. В тексте нет ни URL, ни токена бота."""
+
+    def __init__(self, description: str, status_code: Optional[int] = None):
+        super().__init__(description)
+        self.description = description
+        self.status_code = status_code
+
+
+async def _tg_post(client, token: str, method: str, **kwargs) -> None:
+    """POST к Bot API; ответ >= 400 и сетевые ошибки -> TelegramSendError без токена."""
+    import httpx
+
+    try:
+        response = await client.post(
+            f"https://api.telegram.org/bot{token}/{method}", **kwargs
+        )
+    except httpx.HTTPError as exc:
+        raise TelegramSendError(f"Telegram недоступен: {type(exc).__name__}") from None
+    if response.status_code >= 400:
+        description = ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                description = str(body.get("description") or "")
+        except ValueError:
+            pass
+        raise TelegramSendError(
+            mask_token(description) or f"HTTP {response.status_code}",
+            response.status_code,
+        )
+
+
 async def _send_telegram(token: str, chat_id: str, text: str) -> None:
     import httpx
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(url, json={"chat_id": chat_id, "text": text})
-        response.raise_for_status()
+        await _tg_post(
+            client, token, "sendMessage", json={"chat_id": chat_id, "text": text}
+        )
 
 
-def _resolve_upload(url: str) -> Optional[str]:
-    """Путь к файлу в uploads/ внутри контейнера (защита от ../)."""
-    if not url.startswith("/uploads/"):
-        return None
-    root = os.path.abspath(settings.UPLOAD_DIR)
-    target = os.path.abspath(os.path.join(root, url[len("/uploads/") :]))
-    if not target.startswith(root + os.sep):
-        return None
-    return target if os.path.isfile(target) else None
+# Вид вложения -> (метод Bot API, ключ поля с файлом)
+_TELEGRAM_METHODS = {
+    "image": ("sendPhoto", "photo"),
+    "animation": ("sendAnimation", "animation"),
+    "voice": ("sendVoice", "voice"),
+    "audio": ("sendAudio", "audio"),
+    "video": ("sendVideo", "video"),
+    "document": ("sendDocument", "document"),
+}
 
 
-def _public_media_urls(urls: List[str]) -> List[str]:
-    """Полные ссылки на файлы из uploads/ для шлюза; без PUBLIC_BASE_URL отдавать нечего."""
-    base = settings.PUBLIC_BASE_URL.rstrip("/")
-    if not base:
-        return []
-    return [base + url for url in urls if url.startswith("/uploads/")]
+async def _send_telegram_files(
+    token: str,
+    chat_id: str,
+    attachments: List[dict],
+    caption: Optional[str] = None,
+) -> int:
+    """Отправка вложений в Telegram методом по виду файла.
 
-
-async def _send_telegram_files(token: str, chat_id: str, attachments: List[dict]) -> None:
-    """Отправка вложений в Telegram: sendPhoto/sendDocument."""
+    caption (текст сообщения) уходит подписью к первому файлу. Возвращает число
+    отправленных файлов: если 0, подпись не ушла и текст надо слать отдельно.
+    """
     import httpx
 
+    sent = 0
     async with httpx.AsyncClient(timeout=60.0) as client:
         for item in attachments:
             url = str(item.get("url") or "")
             if not url:
                 continue
             name = str(item.get("name") or os.path.basename(url) or "файл")
-            content_type = (
-                item.get("content_type")
-                or mimetypes.guess_type(name)[0]
-                or "application/octet-stream"
-            )
-            is_image = str(content_type).startswith("image/")
-            method = "sendPhoto" if is_image else "sendDocument"
-            media_key = "photo" if is_image else "document"
+            content_type = normalize_content_type(name, item.get("content_type"))
+            method, media_key = _TELEGRAM_METHODS[detect_kind(name, content_type)]
+            extra = {"caption": caption} if caption and not sent else {}
 
             if url.startswith(("http://", "https://")):
-                response = await client.post(
-                    f"https://api.telegram.org/bot{token}/{method}",
-                    json={"chat_id": chat_id, media_key: url},
+                if method == "sendPhoto" and (item.get("size") or 0) > TELEGRAM_PHOTO_LIMIT:
+                    method, media_key = "sendDocument", "document"
+                await _tg_post(
+                    client,
+                    token,
+                    method,
+                    json={"chat_id": chat_id, media_key: url, **extra},
                 )
-                response.raise_for_status()
+                sent += 1
                 continue
 
-            local = _resolve_upload(url)
+            local = resolve_upload(url)
             if not local:
                 continue
             with open(local, "rb") as fh:
                 data = fh.read()
-            response = await client.post(
-                f"https://api.telegram.org/bot{token}/{method}",
-                data={"chat_id": chat_id},
-                files={media_key: (name, data, str(content_type))},
+            if method == "sendPhoto" and len(data) > TELEGRAM_PHOTO_LIMIT:
+                # Больше 10 МБ как фото Telegram не примет — шлём документом
+                method, media_key = "sendDocument", "document"
+            await _tg_post(
+                client,
+                token,
+                method,
+                data={"chat_id": chat_id, **extra},
+                files={media_key: (name, data, content_type)},
             )
-            response.raise_for_status()
+            sent += 1
+    return sent
 
 
 @router.post("/{conversation_id}/close")

@@ -304,15 +304,20 @@ async def deliver_telegram(row: Any) -> None:
     try:
         media = _parse_media(row["media"])
         text = str(row["text"])
-        # Абсолютные URL уходят как фото/документ, остальное добавляем в текст
+        # Абсолютные URL уходят файлами (метод по расширению), остальное добавляем в текст
         remote = [u for u in media if u.startswith(("http://", "https://"))]
         relative = [u for u in media if not u.startswith(("http://", "https://"))]
         if relative:
             text = (text + "\n" + "\n".join(relative)).strip()
-        if text.strip():
-            await telegram.send_message(str(row["chat_id"]), text)
-        for url in remote:
-            await telegram.send_media(str(row["chat_id"]), url)
+        chat_id = str(row["chat_id"])
+        if len(remote) == 1 and text.strip() and len(text) <= telegram.CAPTION_LIMIT:
+            # Один файл и короткий текст — текст уходит подписью к файлу
+            await telegram.send_media(chat_id, remote[0], caption=text)
+        else:
+            if text.strip():
+                await telegram.send_message(chat_id, text)
+            for url in remote:
+                await telegram.send_media(chat_id, url)
     except telegram.TelegramError as exc:
         retryable = exc.status_code is None or exc.status_code == 429 or exc.status_code >= 500
         logger.warning("Telegram: не отправлено (id=%s): %s", row["id"], exc)

@@ -56,7 +56,7 @@ export default function AvitoCallbackPage() {
     <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 rounded-lg border p-8 text-center">
       {phase === "working" && (
         <>
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-foreground" />
           <p className="text-sm font-medium">Подключаем Авито…</p>
           <p className="text-xs text-muted-foreground">
             Обмениваем код авторизации на токен и запоминаем аккаунт.

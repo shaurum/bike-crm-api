@@ -565,7 +565,7 @@ export function LeadDetailDialog({
                             href={`${API_URL}${doc.file_url}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-primary hover:underline"
+                            className="font-semibold text-foreground underline underline-offset-2 hover:no-underline"
                           >
                             Договор PDF
                           </a>
@@ -575,7 +575,7 @@ export function LeadDetailDialog({
                             href={`${API_URL}${doc.signed_file_url}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-primary hover:underline"
+                            className="font-semibold text-foreground underline underline-offset-2 hover:no-underline"
                           >
                             Подписанный скан ({doc.signed_at ? fmt(doc.signed_at) : ""})
                           </a>

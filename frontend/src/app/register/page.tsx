@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toaster } from "@/components/ui/toaster";
-import { Bike, Link2, Lock } from "lucide-react";
+import { Link2, Lock } from "lucide-react";
 import { authApi, invitesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -120,16 +120,15 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Bike className="h-7 w-7 text-primary-foreground" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.png" alt="ВЖУХ И ПОЕХАЛИ" className="mx-auto mb-4 h-14 w-auto" />
           <CardTitle>Регистрация</CardTitle>
           <CardDescription>
             {inviteOk
               ? "Вы приглашены в команду — заполните данные"
               : registerOpen
                 ? "Первый аккаунт станет администратором"
-                : "Создание аккаунтов в Bike CRM"}
+                : "Создание аккаунтов в ВЖУХ CRM"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -250,7 +249,7 @@ export default function RegisterPage() {
         <CardFooter className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground text-center">
             Уже есть аккаунт?{" "}
-            <Link href="/login" className="text-primary hover:underline">
+            <Link href="/login" className="font-semibold text-foreground underline underline-offset-2 hover:no-underline">
               Войти
             </Link>
           </p>

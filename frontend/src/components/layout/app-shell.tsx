@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Bike, LogOut, Menu, User as UserIcon } from "lucide-react";
+import { LogOut, Menu, User as UserIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -80,11 +80,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-2 px-3 py-1">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-        <Bike className="h-5 w-5" aria-hidden />
-      </span>
-      <span className="text-lg font-bold leading-tight">Bike CRM</span>
+    <Link href="/" className="flex items-center px-4 py-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/logo.png" alt="ВЖУХ И ПОЕХАЛИ" className="h-9 w-auto" />
     </Link>
   );
 }

@@ -138,7 +138,7 @@ export function CannedRepliesMenu({
         className={cn(
           "flex h-[38px] w-[38px] items-center justify-center rounded-md border transition-colors",
           open
-            ? "border-primary bg-primary/10 text-primary"
+            ? "border-primary bg-brand-soft text-foreground"
             : "bg-background text-muted-foreground hover:text-foreground"
         )}
       >
@@ -167,7 +167,7 @@ export function CannedRepliesMenu({
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded border",
                 manage
-                  ? "border-primary text-primary"
+                  ? "border-primary bg-brand-soft text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >

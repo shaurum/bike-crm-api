@@ -95,7 +95,9 @@ async def _resolve_attachments(session: AsyncSession, raw) -> list[dict]:
             continue
         from app.services.tg_media import save_tg_file
 
-        saved = await save_tg_file(token, file_id, name=item.get("name"))
+        saved = await save_tg_file(
+            token, file_id, name=item.get("name"), kind=item.get("kind")
+        )
         if saved:
             out.append(saved)
     return out

@@ -1,7 +1,7 @@
 """Схемы раздела «Сообщения»."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -66,6 +66,7 @@ class AttachmentItem(BaseModel):
     url: str
     name: Optional[str] = None
     content_type: Optional[str] = None
+    size: Optional[int] = None
 
 
 class MessageResponse(BaseModel):
@@ -103,6 +104,15 @@ class ConversationDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AttachmentIn(BaseModel):
+    """Вложение в запросе на отправку (поля берутся из ответа загрузки)."""
+
+    url: str
+    name: Optional[str] = None
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+
+
 class MessageCreate(BaseModel):
     """Отправка исходящего сообщения в выбранный канал."""
 
@@ -111,9 +121,12 @@ class MessageCreate(BaseModel):
     contact_id: Optional[UUID] = Field(
         None, description="Куда отправлять; пусто = основной контакт канала"
     )
-    attachments: List[str] = Field(
+    attachments: List[Union[AttachmentIn, str]] = Field(
         default_factory=list,
-        description="URL вложений из /uploads (после загрузки через /attachments)",
+        description=(
+            "Вложения из /uploads/messages (после загрузки через /attachments): "
+            "объекты {url, name, content_type, size} или просто строки-url"
+        ),
     )
 
     @field_validator("content")
@@ -123,11 +136,9 @@ class MessageCreate(BaseModel):
 
     @field_validator("attachments")
     @classmethod
-    def _attachments_local(cls, v: list) -> list:
-        for url in v:
-            if not isinstance(url, str) or not url.startswith("/uploads/"):
-                raise ValueError("Вложение должно быть файлом из uploads")
-        return v
+    def _attachments_normalize(cls, v: list) -> list:
+        # Строки (старый формат) превращаем в AttachmentIn; url проверяет send_message
+        return [AttachmentIn(url=a) if isinstance(a, str) else a for a in v]
 
 
 class MessageSendResponse(BaseModel):

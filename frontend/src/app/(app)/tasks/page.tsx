@@ -409,7 +409,7 @@ export default function TasksPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">Задачи</h1>
+          <h1 className="font-display text-xl font-bold">Задачи</h1>
           <p className="text-sm text-muted-foreground">
             {totalActive} активных
           </p>
@@ -546,7 +546,7 @@ export default function TasksPage() {
                 }}
                 className={cn(
                   "flex min-h-40 flex-col rounded-lg border bg-muted/30",
-                  dragOver === status && "border-primary ring-2 ring-primary/30"
+                  dragOver === status && "border-primary bg-brand-soft/40 ring-2 ring-primary"
                 )}
               >
                 <div className="flex items-center justify-between border-b px-3 py-2">
@@ -569,7 +569,7 @@ export default function TasksPage() {
                         }
                         onClick={() => openEdit(task)}
                         className={cn(
-                          "cursor-grab rounded-md border bg-background p-2 shadow-sm hover:border-primary/50 active:cursor-grabbing",
+                          "cursor-grab rounded-md border bg-background p-2 shadow-sm hover:border-foreground/40 active:cursor-grabbing",
                           isFinished(task) && "opacity-60"
                         )}
                       >

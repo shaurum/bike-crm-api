@@ -8,6 +8,7 @@ from sqlalchemy import select, and_
 from datetime import datetime, timezone, timedelta
 
 from app.core.config import settings
+from app.services.attachments import mask_token
 from app.models import Task, TaskStatus, User, Booking, BookingStatus, Bike, BikeStatus
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,9 @@ async def _send_telegram_notification(chat_id: str, text: str):
         try:
             response = await client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
             if response.status_code != 200:
-                logger.error(f"Telegram send failed: {response.text}")
+                logger.error("Telegram send failed: %s", mask_token(response.text))
         except Exception as e:
-            logger.exception(f"Telegram notification error: {e}")
+            logger.error("Telegram notification error: %s", mask_token(e))
 
 
 @shared_task

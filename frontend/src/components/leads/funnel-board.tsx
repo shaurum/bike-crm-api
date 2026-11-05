@@ -412,7 +412,7 @@ function StageColumn({
       ref={setNodeRef}
       className={cn(
         "flex w-64 shrink-0 flex-col rounded-lg bg-gray-100 p-2 transition-colors",
-        isOver && "bg-gray-200 ring-2 ring-primary/40"
+        isOver && "bg-gray-200 ring-2 ring-primary"
       )}
     >
       <div className="mb-2 flex items-center justify-between gap-2 px-1">

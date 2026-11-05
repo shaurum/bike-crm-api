@@ -31,7 +31,7 @@ export default function MarkdownBody({ content }: { content: string }) {
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="text-primary underline underline-offset-2"
+              className="font-medium text-foreground underline underline-offset-2"
             >
               {children}
             </a>
@@ -57,7 +57,7 @@ export default function MarkdownBody({ content }: { content: string }) {
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="my-2 border-l-4 border-primary/40 bg-muted/50 py-1 pl-3 italic">
+            <blockquote className="my-2 border-l-4 border-primary bg-muted/50 py-1 pl-3 italic">
               {children}
             </blockquote>
           ),
