@@ -1,7 +1,10 @@
 name: Deploy
 
-# Деплой по релизу: тег v* создаёт Release (release.yml) и тут же
-# просит VPS установить его немедленно (обычно VPS подхватывает сам по cron).
+# Деплой по релизу на VPS: тег v* создаёт Release (release.yml), а этот workflow
+# заходит на VPS по SSH и запускает scripts/deploy-vps.sh. На VPS работает
+# облачный шлюз интеграций (Telegram, Авито): скрипт обновляет его код и
+# пересобирает контейнер, при неудаче откатывает. CRM обновляется там, только
+# если она на этом сервере установлена. Ручной запуск ставит последний релиз.
 
 on:
   push:
@@ -30,16 +33,15 @@ jobs:
 
       - name: Деплой по SSH
         if: env.HAS_VPS == 'true'
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            if [ ! -f /opt/bike-crm/scripts/auto-update.sh ]; then
-              echo "Репозиторий ещё не клонирован на сервер — выполните первый клон" >&2
-              exit 1
-            fi
-            bash /opt/bike-crm/scripts/auto-update.sh
-            cat /opt/bike-crm/backend/.update_state.json 2>/dev/null || true
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o BatchMode=yes \
+            "${VPS_USER:-root}@${VPS_HOST}" sh -s -- "$TAG" < scripts/deploy-vps.sh
