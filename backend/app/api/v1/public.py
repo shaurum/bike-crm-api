@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.models import Bike, BikeStatus, BikePrice, Branch, BookingWidget, Booking, BookingStatus
+from app.schemas.public import PublicBikePrice, PublicBikeResponse
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -18,23 +19,62 @@ async def verify_public_api_key(x_api_key: str = Header(None)):
         raise HTTPException(status_code=401, detail="Неверный API ключ")
 
 
-@router.get("/bikes")
+async def _to_public(db: AsyncSession, bike: Bike) -> PublicBikeResponse:
+    from app.api.v1.bikes import _with_rental_state
+
+    await _with_rental_state(db, bike)
+    return PublicBikeResponse(
+        id=bike.id,
+        model=bike.model,
+        color=bike.color,
+        year=bike.year,
+        battery_capacity=bike.battery_capacity,
+        max_speed=bike.max_speed,
+        range_km=bike.range_km,
+        status=bike.status.value,
+        # Как на «Парковке»: занят, если есть активная бронь или открытая сделка
+        is_available=(
+            bike.status == BikeStatus.AVAILABLE
+            and not bike.is_rented
+            and bike.linked_lead_id is None
+        ),
+        photos=list(bike.photos or []),
+        prices=[
+            PublicBikePrice(
+                duration_min=p.duration_min,
+                duration_max=p.duration_max,
+                price=p.price,
+                deposit=p.deposit,
+            )
+            for p in sorted(bike.prices, key=lambda p: p.duration_min)
+            if p.is_active
+        ],
+    )
+
+
+@router.get("/bikes", response_model=list[PublicBikeResponse])
 async def list_public_bikes(
     branch_id: Optional[UUID] = None,
     available_only: bool = True,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_public_api_key),
 ):
-    query = select(Bike).options(selectinload(Bike.prices)).where(Bike.deleted_at.is_(None))
-    if available_only:
-        query = query.where(Bike.status == BikeStatus.AVAILABLE)
+    """Байки для сайта. available_only=false — весь парк с признаком is_available."""
+    query = (
+        select(Bike)
+        .options(selectinload(Bike.prices))
+        .where(Bike.deleted_at.is_(None))
+        .order_by(Bike.model)
+    )
     if branch_id:
         query = query.where(Bike.branch_id == branch_id)
-    result = await db.execute(query)
-    return result.scalars().all()
+    bikes = [await _to_public(db, bike) for bike in (await db.execute(query)).scalars().all()]
+    if available_only:
+        bikes = [bike for bike in bikes if bike.is_available]
+    return bikes
 
 
-@router.get("/bikes/{bike_id}")
+@router.get("/bikes/{bike_id}", response_model=PublicBikeResponse)
 async def get_public_bike(
     bike_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -42,13 +82,13 @@ async def get_public_bike(
 ):
     result = await db.execute(
         select(Bike)
-        .options(selectinload(Bike.prices), selectinload(Bike.branch))
+        .options(selectinload(Bike.prices))
         .where(Bike.id == bike_id, Bike.deleted_at.is_(None))
     )
     bike = result.scalar_one_or_none()
     if not bike:
         raise HTTPException(status_code=404, detail="Байк не найден")
-    return bike
+    return await _to_public(db, bike)
 
 
 @router.get("/availability")

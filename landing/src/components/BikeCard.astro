@@ -31,7 +31,11 @@ const photoSrc = photo ? (photo.startsWith('http') ? photo : photo.startsWith('/
 ---
 <article class="bike-card">
   <div class="bike-card__media">
-    <div class="bike-card__badge">В наличии: {bike.available_count ?? 'много'}</div>
+    {bike.available_count === 0 ? (
+      <div class="bike-card__badge bike-card__badge--busy">Сейчас все в аренде</div>
+    ) : (
+      <div class="bike-card__badge">В наличии: {bike.available_count ?? 'много'}</div>
+    )}
     <div class="bike-card__photo">
       {photoSrc ? (
         <img src={photoSrc} alt={bike.model} loading="lazy" />
@@ -99,6 +103,10 @@ const photoSrc = photo ? (photo.startsWith('http') ? photo : photo.startsWith('/
     font-weight: 600;
     font-size: 0.9rem;
     z-index: 2;
+  }
+  .bike-card__badge--busy {
+    background: #e5e5e5;
+    color: #555;
   }
   .bike-card__photo,
   .bike-card__placeholder {

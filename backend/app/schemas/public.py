@@ -20,6 +20,9 @@ class PublicBikeResponse(BaseModel):
     max_speed: Optional[int] = None
     range_km: Optional[int] = None
     status: str
+    # Свободен прямо сейчас: статус «доступен», нет активной брони и открытой сделки
+    is_available: bool = False
+    # Пути вида /uploads/bike-<id>.webp; сайт скачивает их с адреса CRM
     photos: List[str] = []
     prices: List[PublicBikePrice] = []
 

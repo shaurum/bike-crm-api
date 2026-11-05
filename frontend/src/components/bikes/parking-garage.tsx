@@ -453,6 +453,12 @@ export function BikeDialog({
                   <p className="text-xs text-muted-foreground">
                     JPG, PNG, WEBP или GIF до 8 МБ
                   </p>
+                  {/* Карточка на сайте рисует байк без подложки, с тенью, в рамке 16:10 */}
+                  <p className="text-xs text-muted-foreground">
+                    Для сайта: PNG или WEBP с прозрачным фоном, байк сбоку, по горизонтали
+                    16:10 (например 1600×1000, не меньше 800×500), до 1 МБ. На сайте фото
+                    появится в течение 30 минут.
+                  </p>
                 </div>
               </div>
 
