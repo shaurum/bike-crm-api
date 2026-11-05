@@ -16,11 +16,20 @@ jobs:
   deploy:
     name: Деплой на VPS
     runs-on: ubuntu-latest
+    # Без VPS обновления ставит автообновление на ПК (scripts/auto-update.ps1),
+    # поэтому без секретов шаг пропускается, а не роняет каждый релиз
+    env:
+      HAS_VPS: ${{ secrets.VPS_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: VPS не настроен
+        if: env.HAS_VPS != 'true'
+        run: echo "::notice::Секреты VPS_HOST и SSH_PRIVATE_KEY не заданы, деплой по SSH пропущен; релиз установит автообновление"
+
       - name: Деплой по SSH
+        if: env.HAS_VPS == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}

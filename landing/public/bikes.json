@@ -12,7 +12,7 @@
       "max_speed": 45,
       "range_km": 80,
       "photos": [
-        "/bike-crm-api/bikes/bike1.webp"
+        "/bikes/bike1.webp"
       ],
       "available_count": 3,
       "prices": [
@@ -42,7 +42,7 @@
       "max_speed": 45,
       "range_km": 90,
       "photos": [
-        "/bike-crm-api/bikes/bike2.webp"
+        "/bikes/bike2.webp"
       ],
       "available_count": 2,
       "prices": [
@@ -72,7 +72,7 @@
       "max_speed": 50,
       "range_km": 95,
       "photos": [
-        "/bike-crm-api/bikes/bike3.webp"
+        "/bikes/bike3.webp"
       ],
       "available_count": 1,
       "prices": [
