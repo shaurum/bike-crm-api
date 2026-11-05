@@ -77,6 +77,7 @@ class BikeBase(BaseModel):
     purchase_date: Optional[datetime] = None
     status: BikeStatus = BikeStatus.AVAILABLE
     current_location: Optional[str] = None
+    tracker_id: Optional[int] = None
     notes: Optional[str] = None
     specs: dict = {}
     photos: List[str] = []
@@ -141,6 +142,7 @@ class BikePatch(BaseModel):
     purchase_date: Optional[datetime] = None
     status: Optional[BikeStatus] = None
     current_location: Optional[str] = None
+    tracker_id: Optional[int] = None
     notes: Optional[str] = None
     specs: Optional[dict] = None
     photos: Optional[List[str]] = None

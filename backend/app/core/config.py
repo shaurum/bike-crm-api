@@ -4,7 +4,21 @@ from pydantic import Field, PostgresDsn, RedisDsn
 from typing import List, Optional
 
 
+# Эти поля админ может переопределить в настройках CRM (app.services.runtime_settings)
+RUNTIME_OVERRIDABLE = frozenset({"TELEGRAM_BOT_TOKEN", "PUBLIC_BASE_URL", "PUBLIC_API_KEY"})
+
+
 class Settings(BaseSettings):
+    def __getattribute__(self, name: str):
+        # Значение из настроек главнее .env; так его видят все места, где читают settings.X
+        if name in RUNTIME_OVERRIDABLE:
+            from app.services import runtime_settings
+
+            value = runtime_settings.override(name)
+            if value:
+                return value
+        return super().__getattribute__(name)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

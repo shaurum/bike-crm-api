@@ -305,6 +305,20 @@ export const bikesApi = {
   branches: () => api.get("/bikes/branches/list"),
 };
 
+export const runtimeSettingsApi = {
+  get: () => api.get("/settings/runtime"),
+  update: (payload: { values?: Record<string, string>; clear?: string[] }) =>
+    api.patch("/settings/runtime", payload),
+};
+
+export const trackingApi = {
+  fleet: () => api.get("/tracking/fleet"),
+  trackers: () => api.get("/tracking/trackers"),
+  bike: (id: string) => api.get(`/tracking/bikes/${id}`),
+  track: (id: string, hours: number) =>
+    api.get(`/tracking/bikes/${id}/track`, { params: { hours } }),
+};
+
 export const bookingsApi = {
   list: (params?: {
     page?: number;

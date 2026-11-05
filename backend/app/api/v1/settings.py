@@ -25,9 +25,14 @@ from app.schemas.settings import (
     EmailSettingsUpdate,
     EmailTestRequest,
     IntegrationSummary,
+    RuntimeKeyState,
+    RuntimeSettingsResponse,
+    RuntimeSettingsUpdate,
     SettingsBundle,
 )
+from app.api.v1.auth import require_admin
 from app.services import avito as avito_service
+from app.services import runtime_settings
 from app.schemas.rental import PasswordChange, UserProfileUpdate, UserResponse
 from app.services.mail import MailError, get_mail_settings, send_email
 
@@ -83,9 +88,7 @@ async def get_settings(
 ):
     """Всё для экрана настроек одним запросом."""
     company = await _get_company(db)
-    items = (
-        await db.execute(select(IntegrationSetting).order_by(IntegrationSetting.name))
-    ).scalars().all()
+    items = await _list_integration_rows(db)
 
     return SettingsBundle(
         company=CompanyProfileResponse.model_validate(company) if company else None,
@@ -136,10 +139,139 @@ async def list_integrations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    items = (
-        await db.execute(select(IntegrationSetting).order_by(IntegrationSetting.name))
-    ).scalars().all()
+    items = await _list_integration_rows(db)
     return [_to_summary(item) for item in items]
+
+
+async def _list_integration_rows(db: AsyncSession) -> list[IntegrationSetting]:
+    # Ключи и токены хранятся в той же таблице, но это не интеграция
+    return list(
+        (
+            await db.execute(
+                select(IntegrationSetting)
+                .where(IntegrationSetting.name != runtime_settings.STORAGE_NAME)
+                .order_by(IntegrationSetting.name)
+            )
+        ).scalars().all()
+    )
+
+
+# --- Ключи и токены (только админ) ---
+
+
+async def _runtime_row(db: AsyncSession) -> Optional[IntegrationSetting]:
+    return (
+        await db.execute(
+            select(IntegrationSetting).where(
+                IntegrationSetting.name == runtime_settings.STORAGE_NAME
+            )
+        )
+    ).scalars().first()
+
+
+def _runtime_response(item: Optional[IntegrationSetting]) -> RuntimeSettingsResponse:
+    config = (item.config if item else None) or {}
+    secret = (item.secret if item else None) or {}
+    keys = []
+    for key in runtime_settings.KEYS:
+        stored = (secret if key.secret else config).get(key.name)
+        if stored:
+            source = "settings"
+        elif runtime_settings.is_default(key.name):
+            source = "default"
+        elif runtime_settings.env_value(key.name):
+            source = "env"
+        else:
+            source = "none"
+        value = None
+        if not key.secret:
+            value = stored or runtime_settings.env_value(key.name) or None
+        keys.append(
+            RuntimeKeyState(
+                name=key.name,
+                label=key.label,
+                group=key.group,
+                help=key.help,
+                secret=key.secret,
+                url=key.url,
+                source=source,
+                value=value,
+            )
+        )
+    return RuntimeSettingsResponse(keys=keys, updated_at=item.updated_at if item else None)
+
+
+@router.get("/runtime", response_model=RuntimeSettingsResponse)
+async def get_runtime_settings(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Ключи и токены: откуда берётся каждый. Секреты не возвращаются."""
+    return _runtime_response(await _runtime_row(db))
+
+
+@router.patch("/runtime", response_model=RuntimeSettingsResponse)
+async def update_runtime_settings(
+    payload: RuntimeSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    unknown = [
+        name
+        for name in [*payload.values, *payload.clear]
+        if name not in runtime_settings.KEYS_BY_NAME
+    ]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Неизвестные ключи: {', '.join(unknown)}")
+
+    item = await _runtime_row(db)
+    if not item:
+        item = IntegrationSetting(
+            name=runtime_settings.STORAGE_NAME,
+            title=runtime_settings.STORAGE_TITLE,
+            is_enabled=True,
+            config={},
+            secret={},
+        )
+        db.add(item)
+
+    # JSON-поля меняем целиком, иначе SQLAlchemy не заметит правку
+    config = dict(item.config or {})
+    secret = dict(item.secret or {})
+
+    for name in payload.clear:
+        config.pop(name, None)
+        secret.pop(name, None)
+
+    for name, raw in payload.values.items():
+        value = (raw or "").strip()
+        if not value:
+            continue
+        key = runtime_settings.KEYS_BY_NAME[name]
+        if len(value) > 500:
+            raise HTTPException(status_code=400, detail=f"{key.label}: слишком длинное значение")
+        if key.url:
+            if not value.startswith(("http://", "https://")):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{key.label}: адрес должен начинаться с http:// или https://",
+                )
+            value = value.rstrip("/")
+        (secret if key.secret else config)[name] = value
+
+    item.config = config
+    item.secret = secret
+    await db.commit()
+    await db.refresh(item)
+
+    runtime_settings.remember(item.config, item.secret)
+    # Статус трекеров кэшируется: со старым токеном он устарел
+    from app.services import gdegazel
+
+    gdegazel.reset_cache()
+    changed = [name for name, raw in payload.values.items() if (raw or "").strip()]
+    logger.info("Ключи и токены изменены: %s", ", ".join([*changed, *payload.clear]))
+    return _runtime_response(item)
 
 
 async def _get_integration(db: AsyncSession, name: str) -> IntegrationSetting:

@@ -164,3 +164,27 @@ class SettingsBundle(BaseModel):
 
     company: Optional[CompanyProfileResponse] = None
     integrations: List[IntegrationSummary] = Field(default_factory=list)
+
+class RuntimeKeyState(BaseModel):
+    """Ключ из раздела «Ключи и токены». Секретное значение наружу не отдаётся."""
+
+    name: str
+    label: str
+    group: str
+    help: str
+    secret: bool
+    url: bool = False
+    source: str = Field(description="settings, env, default или none")
+    value: Optional[str] = Field(None, description="Только для несекретных ключей")
+
+
+class RuntimeSettingsResponse(BaseModel):
+    keys: List[RuntimeKeyState]
+    updated_at: Optional[datetime] = None
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    """Пустая строка в values означает «не менять»; чтобы вернуться к .env — имя в clear."""
+
+    values: Dict[str, str] = Field(default_factory=dict)
+    clear: List[str] = Field(default_factory=list)

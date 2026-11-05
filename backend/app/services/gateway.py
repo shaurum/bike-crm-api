@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any, Optional
 
 import httpx
+
+from app.services import runtime_settings
 
 TIMEOUT = 25.0
 
@@ -17,11 +18,11 @@ class GatewayError(Exception):
 
 
 def gateway_url() -> str:
-    return os.environ.get("GATEWAY_URL", "").strip().rstrip("/")
+    return runtime_settings.get("GATEWAY_URL").rstrip("/")
 
 
 def gateway_token() -> str:
-    return os.environ.get("GATEWAY_TOKEN", "").strip()
+    return runtime_settings.get("GATEWAY_TOKEN")
 
 
 def is_configured() -> bool:
@@ -40,7 +41,7 @@ async def _request(
     params: Optional[dict] = None,
 ) -> Any:
     if not is_configured():
-        raise GatewayError("Шлюз не настроен: задайте GATEWAY_URL и GATEWAY_TOKEN")
+        raise GatewayError("Шлюз не настроен: укажите адрес и токен в Настройки → Ключи и токены")
 
     url = gateway_url() + path
     try:

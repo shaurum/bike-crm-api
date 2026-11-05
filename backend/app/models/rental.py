@@ -72,6 +72,7 @@ class Bike(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
         comment="Статус байка",
     )
     current_location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Текущее местоположение")
+    tracker_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="ID трекера в GDEGAZEL")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="Примечания")
     specs: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False, comment="Дополнительные характеристики (JSON)")
     photos: Mapped[List[str]] = mapped_column(JSONB, default=[], nullable=False, comment="URL фото")
@@ -90,6 +91,7 @@ class Bike(UUIDMixin, TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_bike_branch_status", "branch_id", "status"),
         Index("ix_bike_frame_number", "frame_number"),
         Index("ix_bike_status", "status"),
+        Index("ix_bike_tracker_id", "tracker_id", unique=True),
     )
 
 
