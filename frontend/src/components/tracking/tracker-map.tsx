@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LayerGroup, Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -47,6 +47,7 @@ export function TrackerMap({
   clickRef.current = onMarkerClick;
   const dataRef = useRef({ markers, track });
   dataRef.current = { markers, track };
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const draw = () => {
     const L = leafletRef.current;
@@ -113,7 +114,11 @@ export function TrackerMap({
       observer = new ResizeObserver(() => map.invalidateSize());
       observer.observe(containerRef.current);
       draw();
-    });
+    })
+      // После обновления сайта старая вкладка не найдёт модуль карты: не роняем всю страницу
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
 
     return () => {
       cancelled = true;
@@ -144,6 +149,19 @@ export function TrackerMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
+
+  if (loadFailed) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground",
+          className
+        )}
+      >
+        Не удалось загрузить карту. Обновите страницу.
+      </div>
+    );
+  }
 
   // isolate: панели Leaflet с z-index до 1000 не перекрывают шапку и диалоги
   return <div ref={containerRef} className={cn("isolate rounded-lg border bg-gray-100", className)} />;

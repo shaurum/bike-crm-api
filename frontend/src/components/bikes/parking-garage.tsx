@@ -916,7 +916,7 @@ export function ParkingGarage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Всего: {bikes.length}</Badge>
           <Badge>Свободно: {bikes.length - rentedCount}</Badge>
           <Badge variant="secondary">В аренде: {rentedCount}</Badge>
@@ -926,12 +926,12 @@ export function ParkingGarage() {
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по модели или раме"
-            className="h-9 w-52"
+            className="h-9 w-full sm:w-52"
           />
           <Button variant="outline" size="sm" onClick={load}>
             <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
